@@ -1,8 +1,8 @@
 from flask import Flask, request
 import requests
+import os
 
-TOKEN = "你的BOT_TOKEN"
-URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 
 app = Flask(__name__)
 
@@ -10,17 +10,19 @@ app = Flask(__name__)
 def home():
     return "bot running"
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/", methods=["POST"])
+def telegram_webhook():
     data = request.json
 
     if "message" in data:
         chat_id = data["message"]["chat"]["id"]
         text = data["message"]["text"]
 
-        reply = f"You said: {text}"
+        reply = "You said: " + text
 
-        requests.post(URL, json={
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+
+        requests.post(url, json={
             "chat_id": chat_id,
             "text": reply
         })
@@ -28,4 +30,5 @@ def webhook():
     return "ok"
 
 if __name__ == "__main__":
-    app.run()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
