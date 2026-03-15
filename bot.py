@@ -2,6 +2,7 @@ import os
 import requests
 import time
 from flask import Flask
+from threading import Thread
 
 app = Flask(__name__)
 
@@ -20,11 +21,17 @@ def send_message(text):
     }
     requests.post(url, data=data)
 
-def test_message():
-    send_message("✅ Bot started successfully")
+def news_loop():
+    while True:
+        send_message("🌍 Global News Test\nSystem running successfully")
+        time.sleep(60)
+
+def start_news():
+    t = Thread(target=news_loop)
+    t.start()
 
 if __name__ == "__main__":
-    test_message()
+    start_news()
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
