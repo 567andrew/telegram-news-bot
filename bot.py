@@ -1,5 +1,6 @@
 import requests
 import feedparser
+import html
 
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
@@ -22,6 +23,16 @@ def send_message(text):
     })
 
 
+def clean_title(title):
+
+    title = html.unescape(title)
+
+    if " - " in title:
+        title = title.split(" - ")[0]
+
+    return title
+
+
 def fetch_news():
 
     for source, url in feeds.items():
@@ -33,15 +44,17 @@ def fetch_news():
 
         for entry in feed.entries[:2]:
 
-            if entry.title in sent_titles:
+            title = clean_title(entry.title)
+
+            if title in sent_titles:
                 continue
 
-            sent_titles.add(entry.title)
+            sent_titles.add(title)
 
             message = f"""
 🌍 {source}
 
-{entry.title}
+{title}
 
 {entry.link}
 """
