@@ -4,7 +4,7 @@ from flask import Flask
 
 app = Flask(__name__)
 
-BOT_TOKEN = "你的BOT_TOKEN"
+BOT_TOKEN = "BOT_TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto""
 CHAT_ID = "@world_monitor_news"
 
 @app.route("/")
