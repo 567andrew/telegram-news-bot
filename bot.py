@@ -1,11 +1,12 @@
 import os
 import requests
+import time
 from flask import Flask
 
 app = Flask(__name__)
 
-BOT_TOKEN = "BOT_TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto""
-CHAT_ID = "@world_monitor_news"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
 @app.route("/")
 def home():
@@ -19,6 +20,11 @@ def send_message(text):
     }
     requests.post(url, data=data)
 
+def test_message():
+    send_message("✅ Bot started successfully")
+
 if __name__ == "__main__":
+    test_message()
+
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
