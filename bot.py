@@ -4,44 +4,51 @@ import os
 import feedparser
 import time
 import threading
+import re
 
-TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
-CHAT_ID = "7502932042"
+TOKEN = "你的TOKEN"
+CHAT_ID = "你的CHATID"
 
 app = Flask(__name__)
 
 last_news = ""
 
+NEWS_FEEDS = {
+"CNN":"https://rss.cnn.com/rss/edition.rss",
+"BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
+"Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
+"AP":"https://apnews.com/rss",
+"Guardian":"https://www.theguardian.com/world/rss"
+}
+
 KEYWORDS = [
-"war","attack","missile","military",
+"war","attack","missile","military","conflict",
 "president","election","government",
-"economy","inflation","bank",
-"AI","technology",
-"china","russia","usa","nato","eu",
-"conflict","crisis","sanction","trade",
-"oil","gas","defense"
+"china","russia","usa","nato","iran",
+"economy","inflation","bank","oil","gas",
+"ai","technology","cyber"
 ]
 
 def translate(text):
 
-    url = "https://translate.googleapis.com/translate_a/single"
+    url="https://translate.googleapis.com/translate_a/single"
 
-    params = {
-        "client":"gtx",
-        "sl":"auto",
-        "tl":"zh",
-        "dt":"t",
-        "q":text
+    params={
+    "client":"gtx",
+    "sl":"auto",
+    "tl":"zh",
+    "dt":"t",
+    "q":text
     }
 
-    r = requests.get(url,params=params)
+    r=requests.get(url,params=params)
 
     return r.json()[0][0][0]
 
 
 def is_major_news(title):
 
-    title = title.lower()
+    title=title.lower()
 
     for k in KEYWORDS:
 
@@ -51,35 +58,58 @@ def is_major_news(title):
     return False
 
 
+def extract_image(summary):
+
+    img = re.search(r'<img.*?src="(.*?)"',summary)
+
+    if img:
+        return img.group(1)
+
+    return None
+
+
 def send_message(text):
 
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
     requests.post(url,json={
-        "chat_id":CHAT_ID,
-        "text":text
+    "chat_id":CHAT_ID,
+    "text":text
     })
 
 
-def format_news(entry):
+def send_photo(photo,text):
 
-    title = entry.title
-    summary = entry.summary
+    url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 
-    chinese_summary = translate(summary)
+    requests.post(url,data={
+    "chat_id":CHAT_ID,
+    "caption":text
+    },files={
+    "photo":requests.get(photo).content
+    })
 
-    short_summary = chinese_summary[:120]
 
-    message = f"""
+def format_news(entry,source):
+
+    title=entry.title
+
+    summary=entry.summary
+
+    chinese=translate(summary)
+
+    short=chinese[:120]
+
+    message=f"""
 🌍 全球新闻
 
 📰 {title}
 
 📌 摘要
-{chinese_summary}
+{chinese}
 
 🧾 总结
-{short_summary}
+{short}
 
 👤 Who
 Unknown
@@ -97,7 +127,7 @@ Recent
 Developing
 
 📰 来源
-CNN
+{source}
 """
 
     return message
@@ -109,23 +139,31 @@ def news_loop():
 
     while True:
 
-        feed = feedparser.parse(
-        "https://rss.cnn.com/rss/edition.rss"
-        )
+        for source,url in NEWS_FEEDS.items():
 
-        for entry in feed.entries[:5]:
+            feed=feedparser.parse(url)
 
-            if entry.link != last_news:
+            for entry in feed.entries[:12]:
 
-                if is_major_news(entry.title):
+                if entry.link!=last_news:
 
-                    msg = format_news(entry)
+                    if is_major_news(entry.title):
 
-                    send_message(msg)
+                        msg=format_news(entry,source)
 
-                    last_news = entry.link
+                        img=extract_image(entry.summary)
 
-                    break
+                        if img:
+
+                            send_photo(img,msg)
+
+                        else:
+
+                            send_message(msg)
+
+                        last_news=entry.link
+
+                        break
 
         time.sleep(300)
 
@@ -135,12 +173,12 @@ def home():
     return "News bot running"
 
 
-if __name__ == "__main__":
+if __name__=="__main__":
 
-    thread = threading.Thread(target=news_loop)
+    thread=threading.Thread(target=news_loop)
 
     thread.start()
 
-    port = int(os.environ.get("PORT",10000))
+    port=int(os.environ.get("PORT",10000))
 
     app.run(host="0.0.0.0",port=port)
