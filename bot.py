@@ -32,7 +32,7 @@ def main():
 
         send_message(msg)
 
-    while True:
-        time.sleep(600)
+    import os
 
-main()
+port = int(os.environ.get("PORT", 10000))
+app.run(host="0.0.0.0", port=port)
