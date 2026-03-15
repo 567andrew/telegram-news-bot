@@ -5,7 +5,7 @@ import html
 import threading
 import time
 
-TOKEN = "你的TOKEN"
+TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
 
 feeds = {
