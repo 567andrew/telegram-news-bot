@@ -1,6 +1,7 @@
 import requests
 import feedparser
 import html
+import time
 
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
@@ -62,6 +63,10 @@ def fetch_news():
             send_message(message)
 
 
-if __name__ == "__main__":
+while True:
+
+    print("Checking news...")
 
     fetch_news()
+
+    time.sleep(300)
