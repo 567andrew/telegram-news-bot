@@ -5,18 +5,37 @@ import html
 import threading
 import time
 
-TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
+TOKEN = "你的TOKEN"
 CHAT_ID = "7502932042"
 
 feeds = {
     "CNN": "https://rss.cnn.com/rss/edition.rss",
     "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
-    "GOOGLE": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+    "REUTERS": "https://www.reutersagency.com/feed/?best-topics=world&post_type=best"
 }
 
 sent_links = set()
 
 app = Flask(__name__)
+
+
+def translate(text):
+
+    url = "https://translate.googleapis.com/translate_a/single"
+
+    params = {
+        "client": "gtx",
+        "sl": "auto",
+        "tl": "zh-CN",
+        "dt": "t",
+        "q": text
+    }
+
+    r = requests.get(url, params=params)
+
+    result = r.json()
+
+    return result[0][0][0]
 
 
 def send_message(text):
@@ -57,12 +76,16 @@ def fetch_news():
 
             title = clean_title(entry.title)
 
+            chinese = translate(title)
+
             message = f"""
 🌍 {source}
 
-{title}
+📰 {title}
 
-{entry.link}
+📖 {chinese}
+
+🔗 {entry.link}
 """
 
             send_message(message)
