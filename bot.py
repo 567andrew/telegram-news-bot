@@ -3,7 +3,7 @@ import requests
 import os
 import feedparser
 
-TOKEN = "你的BOT_TOKEN"
+TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
 
 WEBSITE = "https://telegram-news-bot-pdxd.onrender.com"
@@ -26,27 +26,22 @@ def fetch_news():
 
     print("Fetching news...")
 
-    feeds = [
-        "https://rss.cnn.com/rss/edition.rss",
-        "http://feeds.bbci.co.uk/news/rss.xml"
-    ]
+    feed = feedparser.parse("https://rss.cnn.com/rss/edition.rss")
 
-    for feed_url in feeds:
+    if len(feed.entries) > 0:
 
-        feed = feedparser.parse(feed_url)
+        entry = feed.entries[0]
 
-        for entry in feed.entries[:2]:
-
-            message = f"""
+        message = f"""
 🌍 {entry.title}
 
 {entry.link}
 
-Source: News
+Source: CNN
 Website: {WEBSITE}
 """
 
-            send_message(message)
+        send_message(message)
 
 
 @app.route("/")
