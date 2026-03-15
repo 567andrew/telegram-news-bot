@@ -1,19 +1,10 @@
-from flask import Flask
 import requests
-import os
 import feedparser
 
-# Telegram Bot Token
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
-
-# 你的 Telegram 用户 ID
 CHAT_ID = "7502932042"
 
-# 你的网站地址
-WEBSITE = "https://telegram-news-bot-pdxd.onrender.com"
-
-app = Flask(__name__)
-
+RSS_URL = "https://rss.cnn.com/rss/edition.rss"
 
 def send_message(text):
 
@@ -24,44 +15,32 @@ def send_message(text):
         "text": text
     })
 
-    # 打印 Telegram 返回结果
     print("Telegram response:", response.text)
 
 
 def fetch_news():
 
-    print("Fetching news...")
+    print("Fetching CNN news...")
 
-    feed = feedparser.parse("https://rss.cnn.com/rss/edition.rss")
+    feed = feedparser.parse(RSS_URL)
 
-    if len(feed.entries) > 0:
+    if len(feed.entries) == 0:
+        send_message("TEST: RSS working but no news")
+        return
 
-        entry = feed.entries[0]
+    entry = feed.entries[0]
 
-        message = f"""
-🌍 {entry.title}
+    message = f"""
+🌍 CNN NEWS TEST
+
+{entry.title}
 
 {entry.link}
-
-Source: CNN
-Website: {WEBSITE}
 """
 
-        print("Sending news:", entry.title)
-
-        send_message(message)
-
-
-@app.route("/")
-def home():
-
-    fetch_news()
-
-    return "News sent"
+    send_message(message)
 
 
 if __name__ == "__main__":
 
-    port = int(os.environ.get("PORT", 10000))
-
-    app.run(host="0.0.0.0", port=port)
+    fetch_news()
