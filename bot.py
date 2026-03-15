@@ -1,42 +1,31 @@
+from flask import Flask, request
 import requests
-import time
-import os
 
-TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = "-100你的频道ID"
+TOKEN = "你的BOT_TOKEN"
+URL = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-NEWS_API = "https://api.rss2json.com/v1/api.json?rss_url=https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
+app = Flask(__name__)
 
-def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": text
-    }
-    requests.post(url, data=data)
+@app.route("/")
+def home():
+    return "bot running"
 
-def get_news():
-    r = requests.get(NEWS_API)
-    data = r.json()
-    return data["items"][:3]
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
 
-sent = set()
+    if "message" in data:
+        chat_id = data["message"]["chat"]["id"]
+        text = data["message"]["text"]
 
-while True:
-    try:
-        news = get_news()
+        reply = f"You said: {text}"
 
-        for n in news:
-            title = n["title"]
-            link = n["link"]
+        requests.post(URL, json={
+            "chat_id": chat_id,
+            "text": reply
+        })
 
-            if link not in sent:
-                msg = f"{title}\n{link}"
-                send_message(msg)
-                sent.add(link)
+    return "ok"
 
-        time.sleep(300)
-
-    except Exception as e:
-        print(e)
-        time.sleep(60)
+if __name__ == "__main__":
+    app.run()
