@@ -12,13 +12,14 @@ app = Flask(__name__)
 
 last_news = ""
 
-# 重大新闻关键词
 KEYWORDS = [
-"war","attack","strike","missile","military",
-"president","election","government","policy",
-"economy","inflation","bank","market","fed",
-"AI","technology","chip","Tesla","Apple",
-"China","Russia","USA","NATO","EU","UN"
+"war","attack","missile","military",
+"president","election","government",
+"economy","inflation","bank",
+"AI","technology",
+"china","russia","usa","nato","eu",
+"conflict","crisis","sanction","trade",
+"oil","gas","defense"
 ]
 
 def translate(text):
@@ -63,21 +64,40 @@ def send_message(text):
 def format_news(entry):
 
     title = entry.title
-    link = entry.link
-    desc = entry.summary
+    summary = entry.summary
 
-    chinese = translate(desc)
+    chinese_summary = translate(summary)
+
+    short_summary = chinese_summary[:120]
 
     message = f"""
-🌍 全球重大新闻
+🌍 全球新闻
 
 📰 {title}
 
-📌 事件摘要
-{chinese}
+📌 摘要
+{chinese_summary}
 
-🔗 原文
-{link}
+🧾 总结
+{short_summary}
+
+👤 Who
+Unknown
+
+📍 Where
+Unknown
+
+⏰ When
+Recent
+
+⚡ What
+{title}
+
+❓ Why
+Developing
+
+📰 来源
+CNN
 """
 
     return message
