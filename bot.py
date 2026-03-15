@@ -14,7 +14,7 @@ feeds = {
     "GOOGLE": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
 }
 
-sent_titles = set()
+sent_links = set()
 
 app = Flask(__name__)
 
@@ -48,14 +48,14 @@ def fetch_news():
         if len(feed.entries) == 0:
             continue
 
-        for entry in feed.entries[:2]:
+        for entry in feed.entries:
 
-            title = clean_title(entry.title)
-
-            if title in sent_titles:
+            if entry.link in sent_links:
                 continue
 
-            sent_titles.add(title)
+            sent_links.add(entry.link)
+
+            title = clean_title(entry.title)
 
             message = f"""
 🌍 {source}
@@ -66,6 +66,8 @@ def fetch_news():
 """
 
             send_message(message)
+
+            break
 
 
 def news_loop():
@@ -79,7 +81,7 @@ def news_loop():
         time.sleep(300)
 
 
-@app.route("/")
+@app.route("/", methods=["GET","POST"])
 def home():
     return "News bot running"
 
