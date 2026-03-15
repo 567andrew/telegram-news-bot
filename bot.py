@@ -1,117 +1,109 @@
 from flask import Flask
 import requests
+import os
 import feedparser
-import html
-import threading
 import time
 
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
 
-feeds = {
-    "CNN": "https://rss.cnn.com/rss/edition.rss",
-    "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
-    "REUTERS": "https://www.reutersagency.com/feed/?best-topics=world&post_type=best"
-}
-
-sent_links = set()
-
 app = Flask(__name__)
 
+last_news = ""
 
 def translate(text):
-
     url = "https://translate.googleapis.com/translate_a/single"
-
     params = {
         "client": "gtx",
         "sl": "auto",
-        "tl": "zh-CN",
+        "tl": "zh",
         "dt": "t",
         "q": text
     }
-
     r = requests.get(url, params=params)
-
     result = r.json()
-
     return result[0][0][0]
 
 
 def send_message(text):
-
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
     requests.post(url, json={
         "chat_id": CHAT_ID,
         "text": text
     })
 
 
-def clean_title(title):
+def format_news(entry):
 
-    title = html.unescape(title)
+    title = entry.title
+    link = entry.link
+    description = entry.summary
 
-    if " - " in title:
-        title = title.split(" - ")[0]
+    chinese = translate(description)
 
-    return title
-
-
-def fetch_news():
-
-    for source, url in feeds.items():
-
-        feed = feedparser.parse(url)
-
-        if len(feed.entries) == 0:
-            continue
-
-        for entry in feed.entries:
-
-            if entry.link in sent_links:
-                continue
-
-            sent_links.add(entry.link)
-
-            title = clean_title(entry.title)
-
-            chinese = translate(title)
-
-            message = f"""
-🌍 {source}
+    message = f"""
+🌍 CNN
 
 📰 {title}
 
-📖 {chinese}
+📌 新闻摘要
+{chinese}
 
-🔗 {entry.link}
+👤 Who
+Unknown
+
+📍 Where
+Unknown
+
+⏰ When
+Recent
+
+⚡ What
+{title}
+
+❓ Why
+Developing
+
+🔗 {link}
 """
 
-            send_message(message)
-
-            break
+    return message
 
 
 def news_loop():
 
+    global last_news
+
     while True:
 
-        print("Checking news...")
+        feed = feedparser.parse(
+            "https://rss.cnn.com/rss/edition.rss"
+        )
 
-        fetch_news()
+        entry = feed.entries[0]
+
+        if entry.link != last_news:
+
+            message = format_news(entry)
+
+            send_message(message)
+
+            last_news = entry.link
 
         time.sleep(300)
 
 
-@app.route("/", methods=["GET","POST"])
+@app.route("/")
 def home():
     return "News bot running"
 
 
 if __name__ == "__main__":
 
+    import threading
+
     thread = threading.Thread(target=news_loop)
     thread.start()
 
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
