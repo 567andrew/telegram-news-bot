@@ -2,6 +2,8 @@ import feedparser
 import requests
 import time
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "@world_monitor_news"
@@ -47,7 +49,7 @@ def fetch_news():
 
             sent_links.add(entry.link)
 
-def main():
+def bot_loop():
 
     print("Bot started")
 
@@ -60,4 +62,22 @@ def main():
 
         time.sleep(300)
 
-main()
+class Handler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot running")
+
+def start_server():
+
+    port = int(os.environ.get("PORT", 10000))
+
+    server = HTTPServer(("0.0.0.0", port), Handler)
+
+    server.serve_forever()
+
+threading.Thread(target=bot_loop).start()
+
+start_server()
