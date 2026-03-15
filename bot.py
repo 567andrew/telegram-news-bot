@@ -7,8 +7,10 @@ CHAT_ID = "7502932042"
 feeds = {
     "CNN": "https://rss.cnn.com/rss/edition.rss",
     "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
-    "AP": "https://rsshub.app/apnews/topics/apf-topnews"
+    "GOOGLE": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
 }
+
+sent_titles = set()
 
 def send_message(text):
 
@@ -30,6 +32,11 @@ def fetch_news():
             continue
 
         for entry in feed.entries[:2]:
+
+            if entry.title in sent_titles:
+                continue
+
+            sent_titles.add(entry.title)
 
             message = f"""
 🌍 {source}
