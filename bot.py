@@ -27,10 +27,9 @@ def send_news_once():
 
 @app.route("/")
 def home():
-    return "News bot running"
+    send_news_once()   # 每次访问网站都会发送新闻
+    return "News sent"
 
 if __name__ == "__main__":
-    send_news_once()
-
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
