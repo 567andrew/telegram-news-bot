@@ -1,48 +1,84 @@
 from flask import Flask
 import requests
 import os
+import time
+import threading
 import feedparser
 
-TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
-CHAT_ID = "7502932042"
+TOKEN = "你的BOT_TOKEN"
+CHAT_ID = "你的CHAT_ID"
 
-# 你的网站地址
 WEBSITE = "https://telegram-news-bot-pdxd.onrender.com"
 
 app = Flask(__name__)
 
+sent_links = set()
+
 def send_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, json={
+
+    response = requests.post(url, json={
         "chat_id": CHAT_ID,
         "text": text
     })
 
-def send_news_once():
-    print("Fetching news...")
+    print("Telegram response:", response.text)
 
-    feed = feedparser.parse("https://rss.cnn.com/rss/edition.rss")
+def fetch_news():
+    print("Checking news...")
 
-    if len(feed.entries) > 0:
-        entry = feed.entries[0]
+    feeds = [
+        "https://rss.cnn.com/rss/edition.rss",
+        "http://feeds.bbci.co.uk/news/rss.xml",
+        "https://www.reutersagency.com/feed/?best-topics=world&post_type=best"
+    ]
 
-        message = f"""🌍 {entry.title}
+    for feed_url in feeds:
+        feed = feedparser.parse(feed_url)
+
+        for entry in feed.entries[:5]:
+
+            if entry.link in sent_links:
+                continue
+
+            sent_links.add(entry.link)
+
+            message = f"""
+🌍 {entry.title}
 
 {entry.link}
 
-Source: CNN
+Source: News
 Website: {WEBSITE}
 """
 
-        print("Sending:", entry.title)
+            send_message(message)
 
-        send_message(message)
+def news_loop():
+    while True:
+
+        try:
+            fetch_news()
+
+        except Exception as e:
+            print("Error:", e)
+
+        time.sleep(300)
 
 @app.route("/")
 def home():
-    send_news_once()
-    return f"News bot running - {WEBSITE}"
+    return "News bot running"
+
+def start_news_thread():
+
+    thread = threading.Thread(target=news_loop)
+    thread.daemon = True
+    thread.start()
 
 if __name__ == "__main__":
+
+    start_news_thread()
+
     port = int(os.environ.get("PORT", 10000))
+
     app.run(host="0.0.0.0", port=port)
