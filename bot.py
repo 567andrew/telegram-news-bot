@@ -12,20 +12,18 @@ def home():
 
 @app.route("/", methods=["POST"])
 def telegram_webhook():
-    data = request.json
+    data = request.get_json()
 
-    if "message" in data:
+    if data and "message" in data:
         chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"]
+        text = data["message"].get("text", "")
 
-        reply = "You said: " + text
+        reply = f"You said: {text}"
 
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-
-        requests.post(url, json={
-            "chat_id": chat_id,
-            "text": reply
-        })
+        requests.post(
+            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": reply}
+        )
 
     return "ok"
 
