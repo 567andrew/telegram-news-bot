@@ -1,35 +1,42 @@
-import os
 import requests
 import time
-from flask import Flask
-import threading
+import os
 
-app = Flask(__name__)
+TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = "-100你的频道ID"
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+NEWS_API = "https://api.rss2json.com/v1/api.json?rss_url=https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
 
 def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     data = {
         "chat_id": CHAT_ID,
         "text": text
     }
     requests.post(url, data=data)
 
-def news_loop():
-    while True:
-        print("BOT LOOP RUNNING")
-        send_message("Andrew test message")
+def get_news():
+    r = requests.get(NEWS_API)
+    data = r.json()
+    return data["items"][:3]
+
+sent = set()
+
+while True:
+    try:
+        news = get_news()
+
+        for n in news:
+            title = n["title"]
+            link = n["link"]
+
+            if link not in sent:
+                msg = f"{title}\n{link}"
+                send_message(msg)
+                sent.add(link)
+
+        time.sleep(300)
+
+    except Exception as e:
+        print(e)
         time.sleep(60)
-
-@app.route("/")
-def home():
-    return "bot running"
-
-if __name__ == "__main__":
-    thread = threading.Thread(target=news_loop)
-    thread.start()
-
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
