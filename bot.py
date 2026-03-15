@@ -1,6 +1,8 @@
+from flask import Flask
 import requests
 import feedparser
 import html
+import threading
 import time
 
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
@@ -13,6 +15,9 @@ feeds = {
 }
 
 sent_titles = set()
+
+app = Flask(__name__)
+
 
 def send_message(text):
 
@@ -63,10 +68,25 @@ def fetch_news():
             send_message(message)
 
 
-while True:
+def news_loop():
 
-    print("Checking news...")
+    while True:
 
-    fetch_news()
+        print("Checking news...")
 
-    time.sleep(300)
+        fetch_news()
+
+        time.sleep(300)
+
+
+@app.route("/")
+def home():
+    return "News bot running"
+
+
+if __name__ == "__main__":
+
+    thread = threading.Thread(target=news_loop)
+    thread.start()
+
+    app.run(host="0.0.0.0", port=10000)
