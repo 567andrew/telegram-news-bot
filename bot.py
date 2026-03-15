@@ -1,32 +1,32 @@
 import time
-import requests
 import os
-import sys
+import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
-TOKEN = "8627523908:AAHF2jOi7YJLb-ckZZ_gQ9VVeMU_iSXbO30"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = "@world_monitor_news"
 
+print("World Monitor Bot starting...")
+
 def send_message(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     data = {
         "chat_id": CHAT_ID,
         "text": text
     }
-    requests.post(url, data=data)
-
-print("Telegram News Bot started")
+    try:
+        requests.post(url, data=data)
+    except Exception as e:
+        print("Error sending message:", e)
 
 def bot_loop():
-    send_message("🌍 World Monitor Bot Online\nRender server connected.")
+    time.sleep(10)
+    send_message("🌍 World Monitor Bot Online\nServer connected successfully")
+
     while True:
-        try:
-            print("Bot running...")
-            sys.stdout.flush()
-            time.sleep(60)
-        except Exception as e:
-            print("Error:", e)
+        print("Bot running...")
+        time.sleep(60)
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
