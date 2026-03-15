@@ -3,12 +3,17 @@ import requests
 import os
 import feedparser
 
+# Telegram Bot Token
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
+
+# 你的 Telegram 用户 ID
 CHAT_ID = "7502932042"
 
+# 你的网站地址
 WEBSITE = "https://telegram-news-bot-pdxd.onrender.com"
 
 app = Flask(__name__)
+
 
 def send_message(text):
 
@@ -19,7 +24,8 @@ def send_message(text):
         "text": text
     })
 
-    print("Telegram:", response.text)
+    # 打印 Telegram 返回结果
+    print("Telegram response:", response.text)
 
 
 def fetch_news():
@@ -40,6 +46,8 @@ def fetch_news():
 Source: CNN
 Website: {WEBSITE}
 """
+
+        print("Sending news:", entry.title)
 
         send_message(message)
 
