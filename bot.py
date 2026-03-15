@@ -1,5 +1,6 @@
 import time
 import sys
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import threading
 
@@ -18,7 +19,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is running")
 
 def start_server():
-    server = HTTPServer(("0.0.0.0", 10000), Handler)
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), Handler)
     server.serve_forever()
 
 threading.Thread(target=bot_loop).start()
