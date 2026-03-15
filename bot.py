@@ -19,19 +19,21 @@ def send_message(text):
         "chat_id": CHAT_ID,
         "text": text
     }
-    requests.post(url, data=data)
+    r = requests.post(url, data=data)
+    print("SEND RESULT:", r.text)
 
-def news_loop():
+def loop():
     while True:
-        send_message("🌍 Global News Test\nSystem running successfully")
+        print("BOT LOOP RUNNING")
+        send_message("Andrew test message")
         time.sleep(60)
 
-def start_news():
-    t = Thread(target=news_loop)
+def start():
+    t = Thread(target=loop)
     t.start()
 
 if __name__ == "__main__":
-    start_news()
+    start()
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
