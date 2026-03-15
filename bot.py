@@ -6,8 +6,8 @@ import time
 import threading
 import re
 
-TOKEN = "你的TOKEN"
-CHAT_ID = "你的CHATID"
+TOKEN = "你的BOT TOKEN"
+CHAT_ID = "你的CHAT ID"
 
 app = Flask(__name__)
 
@@ -18,15 +18,20 @@ NEWS_FEEDS = {
 "BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
 "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
 "AP":"https://apnews.com/rss",
-"Guardian":"https://www.theguardian.com/world/rss"
+"Guardian":"https://www.theguardian.com/world/rss",
+"AlJazeera":"https://www.aljazeera.com/xml/rss/all.xml",
+"Bloomberg":"https://www.bloomberg.com/feed/podcast/etf-report.xml",
+"Fox":"https://moxie.foxnews.com/google-publisher/world.xml",
+"Politico":"https://www.politico.com/rss/politics08.xml",
+"NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
 }
 
 KEYWORDS = [
 "war","attack","missile","military","conflict",
-"president","election","government",
-"china","russia","usa","nato","iran",
+"china","russia","usa","iran","israel",
+"president","government","election",
 "economy","inflation","bank","oil","gas",
-"ai","technology","cyber"
+"ai","technology","cyber","sanction"
 ]
 
 def translate(text):
@@ -46,13 +51,13 @@ def translate(text):
     return r.json()[0][0][0]
 
 
-def is_major_news(title):
+def is_major_news(text):
 
-    title=title.lower()
+    text=text.lower()
 
     for k in KEYWORDS:
 
-        if k in title:
+        if k in text:
             return True
 
     return False
@@ -60,7 +65,7 @@ def is_major_news(title):
 
 def extract_image(summary):
 
-    img = re.search(r'<img.*?src="(.*?)"',summary)
+    img=re.search(r'<img.*?src="(.*?)"',summary)
 
     if img:
         return img.group(1)
@@ -93,7 +98,6 @@ def send_photo(photo,text):
 def format_news(entry,source):
 
     title=entry.title
-
     summary=entry.summary
 
     chinese=translate(summary)
@@ -139,15 +143,19 @@ def news_loop():
 
     while True:
 
+        print("Scanning news...")
+
         for source,url in NEWS_FEEDS.items():
 
             feed=feedparser.parse(url)
 
-            for entry in feed.entries[:12]:
+            for entry in feed.entries[:25]:
 
                 if entry.link!=last_news:
 
-                    if is_major_news(entry.title):
+                    text=(entry.title+entry.summary)
+
+                    if is_major_news(text):
 
                         msg=format_news(entry,source)
 
