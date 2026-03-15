@@ -4,40 +4,42 @@ import feedparser
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
 
-RSS_URL = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
+feeds = {
+    "CNN": "https://rss.cnn.com/rss/edition.rss",
+    "BBC": "http://feeds.bbci.co.uk/news/rss.xml",
+    "AP": "https://rsshub.app/apnews/topics/apf-topnews"
+}
 
 def send_message(text):
 
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-    response = requests.post(url, json={
+    requests.post(url, json={
         "chat_id": CHAT_ID,
         "text": text
     })
 
-    print(response.text)
-
 
 def fetch_news():
 
-    feed = feedparser.parse(RSS_URL)
+    for source, url in feeds.items():
 
-    if len(feed.entries) == 0:
+        feed = feedparser.parse(url)
 
-        send_message("Google News RSS empty")
-        return
+        if len(feed.entries) == 0:
+            continue
 
-    entry = feed.entries[0]
+        for entry in feed.entries[:2]:
 
-    message = f"""
-🌍 GLOBAL NEWS
+            message = f"""
+🌍 {source}
 
 {entry.title}
 
 {entry.link}
 """
 
-    send_message(message)
+            send_message(message)
 
 
 if __name__ == "__main__":
