@@ -4,7 +4,7 @@ import feedparser
 TOKEN = "8233133696:AAErhEUJdRf3MGib6FRJO2tHAMvLDipkqto"
 CHAT_ID = "7502932042"
 
-RSS_URL = "https://rss.cnn.com/rss/edition.rss"
+RSS_URL = "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
 
 def send_message(text):
 
@@ -15,23 +15,22 @@ def send_message(text):
         "text": text
     })
 
-    print("Telegram response:", response.text)
+    print(response.text)
 
 
 def fetch_news():
 
-    print("Fetching CNN news...")
-
     feed = feedparser.parse(RSS_URL)
 
     if len(feed.entries) == 0:
-        send_message("TEST: RSS working but no news")
+
+        send_message("Google News RSS empty")
         return
 
     entry = feed.entries[0]
 
     message = f"""
-🌍 CNN NEWS TEST
+🌍 GLOBAL NEWS
 
 {entry.title}
 
