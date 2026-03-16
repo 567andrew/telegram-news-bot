@@ -6,10 +6,10 @@ import time
 import threading
 import re
 
-TOKEN = "你的BOT_TOKEN"
-CHAT_ID = "你的CHAT_ID"
+TOKEN="你的BOT_TOKEN"
+CHAT_ID="@world_monitor_news"
 
-app = Flask(__name__)
+app=Flask(__name__)
 
 posted_news=set()
 
@@ -22,18 +22,27 @@ NEWS_FEEDS={
 "Guardian":"https://www.theguardian.com/world/rss",
 
 "NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+"Bloomberg":"https://feeds.bloomberg.com/world/news.rss",
 "AlJazeera":"https://www.aljazeera.com/xml/rss/all.xml",
 "FoxNews":"http://feeds.foxnews.com/foxnews/world",
-"Bloomberg":"https://feeds.bloomberg.com/world/news.rss",
 "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
 
 "CBS":"https://www.cbsnews.com/latest/rss/world",
 "ABC":"https://abcnews.go.com/abcnews/internationalheadlines",
-
-"France24":"https://www.france24.com/en/rss",
+"SkyNews":"https://feeds.skynews.com/feeds/rss/world.xml",
 "DW":"https://rss.dw.com/xml/rss-en-world",
-"SkyNews":"https://feeds.skynews.com/feeds/rss/world.xml"
+"France24":"https://www.france24.com/en/rss",
+
+"Politico":"https://www.politico.com/rss/politics08.xml",
+"Axios":"https://api.axios.com/feed/",
+"Time":"https://time.com/feed/",
+"Forbes":"https://www.forbes.com/world-news/feed/",
 }
+
+TRENDING=[
+"nato","tiktok","bitcoin","tesla","openai",
+"ukraine","gaza","ai","chip","nvidia"
+]
 
 def translate(text):
 
@@ -91,6 +100,10 @@ def news_score(text):
     for w in normal:
         if w in text:
             score+=1
+
+    for w in TRENDING:
+        if w in text:
+            score+=2
 
     return score
 
@@ -178,7 +191,7 @@ def news_loop():
 
     global posted_news
 
-    print("NEWS BOT STARTED")
+    print("NEWS RADAR STARTED")
 
     while True:
 
@@ -198,25 +211,22 @@ def news_loop():
 
                         score=news_score(text)
 
-                        if score>=2:
+                        if score>=1:
 
-                            print("News found:",entry.title)
+                            print("News:",entry.title)
 
                             msg=format_news(entry,source)
 
                             img=extract_image(entry.summary)
 
                             if img:
-
                                 send_photo(img,msg)
-
                             else:
-
                                 send_message(msg)
 
                             posted_news.add(entry.link)
 
-                            if len(posted_news)>1000:
+                            if len(posted_news)>2000:
                                 posted_news.clear()
 
                             break
@@ -227,7 +237,7 @@ def news_loop():
 
             print("ERROR:",e)
 
-        time.sleep(300)
+        time.sleep(120)
 
 
 @app.route("/")
@@ -239,14 +249,14 @@ def home():
 @app.route("/test")
 def test():
 
-    send_message("雷达机器人测试成功 ✅")
+    send_message("雷达机器人运行正常 ✅")
 
     return "Test OK"
 
 
 if __name__=="__main__":
 
-    print("Starting Radar Bot...")
+    print("Starting Global News Radar")
 
     thread=threading.Thread(target=news_loop)
 
