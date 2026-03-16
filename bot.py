@@ -6,8 +6,8 @@ import time
 import threading
 import re
 
-TOKEN = "你的BOT TOKEN"
-CHAT_ID = "你的CHAT ID"
+TOKEN = "你的BOT_TOKEN"
+CHAT_ID = "你的CHAT_ID"
 
 app = Flask(__name__)
 
@@ -18,12 +18,7 @@ NEWS_FEEDS = {
 "BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
 "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
 "AP":"https://apnews.com/rss",
-"Guardian":"https://www.theguardian.com/world/rss",
-"AlJazeera":"https://www.aljazeera.com/xml/rss/all.xml",
-"Bloomberg":"https://www.bloomberg.com/feed/podcast/etf-report.xml",
-"Fox":"https://moxie.foxnews.com/google-publisher/world.xml",
-"Politico":"https://www.politico.com/rss/politics08.xml",
-"NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+"Guardian":"https://www.theguardian.com/world/rss"
 }
 
 KEYWORDS = [
@@ -31,7 +26,7 @@ KEYWORDS = [
 "china","russia","usa","iran","israel",
 "president","government","election",
 "economy","inflation","bank","oil","gas",
-"ai","technology","cyber","sanction"
+"ai","technology","cyber"
 ]
 
 def translate(text):
@@ -39,11 +34,11 @@ def translate(text):
     url="https://translate.googleapis.com/translate_a/single"
 
     params={
-    "client":"gtx",
-    "sl":"auto",
-    "tl":"zh",
-    "dt":"t",
-    "q":text
+        "client":"gtx",
+        "sl":"auto",
+        "tl":"zh",
+        "dt":"t",
+        "q":text
     }
 
     r=requests.get(url,params=params)
@@ -78,8 +73,8 @@ def send_message(text):
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
     requests.post(url,json={
-    "chat_id":CHAT_ID,
-    "text":text
+        "chat_id":CHAT_ID,
+        "text":text
     })
 
 
@@ -88,10 +83,10 @@ def send_photo(photo,text):
     url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 
     requests.post(url,data={
-    "chat_id":CHAT_ID,
-    "caption":text
+        "chat_id":CHAT_ID,
+        "caption":text
     },files={
-    "photo":requests.get(photo).content
+        "photo":requests.get(photo).content
     })
 
 
@@ -141,37 +136,49 @@ def news_loop():
 
     global last_news
 
+    print("NEWS BOT STARTED")
+
     while True:
 
-        print("Scanning news...")
+        try:
 
-        for source,url in NEWS_FEEDS.items():
+            for source,url in NEWS_FEEDS.items():
 
-            feed=feedparser.parse(url)
+                print("Scanning",source)
 
-            for entry in feed.entries[:25]:
+                feed=feedparser.parse(url)
 
-                if entry.link!=last_news:
+                for entry in feed.entries[:20]:
 
-                    text=(entry.title+entry.summary)
+                    if entry.link!=last_news:
 
-                    if is_major_news(text):
+                        text=entry.title+entry.summary
 
-                        msg=format_news(entry,source)
+                        if is_major_news(text):
 
-                        img=extract_image(entry.summary)
+                            print("News found:",entry.title)
 
-                        if img:
+                            msg=format_news(entry,source)
 
-                            send_photo(img,msg)
+                            img=extract_image(entry.summary)
 
-                        else:
+                            if img:
 
-                            send_message(msg)
+                                send_photo(img,msg)
 
-                        last_news=entry.link
+                            else:
 
-                        break
+                                send_message(msg)
+
+                            print("Sent to Telegram")
+
+                            last_news=entry.link
+
+                            break
+
+        except Exception as e:
+
+            print("ERROR:",e)
 
         time.sleep(300)
 
