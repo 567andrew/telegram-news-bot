@@ -11,14 +11,24 @@ CHAT_ID = "你的CHAT_ID"
 
 app = Flask(__name__)
 
-last_news = ""
+posted_news = set()
 
 NEWS_FEEDS = {
-"CNN":"https://rss.cnn.com/rss/edition.rss",
-"BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
+
 "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
 "AP":"https://apnews.com/rss",
-"Guardian":"https://www.theguardian.com/world/rss"
+"BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
+"CNN":"https://rss.cnn.com/rss/edition.rss",
+"Guardian":"https://www.theguardian.com/world/rss",
+
+"NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+"AlJazeera":"https://www.aljazeera.com/xml/rss/all.xml",
+"FoxNews":"http://feeds.foxnews.com/foxnews/world",
+"Bloomberg":"https://feeds.bloomberg.com/world/news.rss",
+"CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
+
+"CBS":"https://www.cbsnews.com/latest/rss/world",
+"ABC":"https://abcnews.go.com/abcnews/internationalheadlines"
 }
 
 KEYWORDS = [
@@ -31,19 +41,25 @@ KEYWORDS = [
 
 def translate(text):
 
-    url="https://translate.googleapis.com/translate_a/single"
+    try:
 
-    params={
-        "client":"gtx",
-        "sl":"auto",
-        "tl":"zh",
-        "dt":"t",
-        "q":text
-    }
+        url="https://translate.googleapis.com/translate_a/single"
 
-    r=requests.get(url,params=params)
+        params={
+            "client":"gtx",
+            "sl":"auto",
+            "tl":"zh",
+            "dt":"t",
+            "q":text[:500]
+        }
 
-    return r.json()[0][0][0]
+        r=requests.get(url,params=params,timeout=5)
+
+        return r.json()[0][0][0]
+
+    except:
+
+        return text
 
 
 def is_major_news(text):
@@ -80,14 +96,20 @@ def send_message(text):
 
 def send_photo(photo,text):
 
-    url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+    try:
 
-    requests.post(url,data={
-        "chat_id":CHAT_ID,
-        "caption":text
-    },files={
-        "photo":requests.get(photo).content
-    })
+        url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+        requests.post(url,data={
+            "chat_id":CHAT_ID,
+            "caption":text
+        },files={
+            "photo":requests.get(photo,timeout=5).content
+        })
+
+    except:
+
+        send_message(text)
 
 
 def format_news(entry,source):
@@ -125,8 +147,7 @@ Recent
 ❓ Why
 Developing
 
-📰 来源
-{source}
+📰 来源：{source}
 """
 
     return message
@@ -134,7 +155,7 @@ Developing
 
 def news_loop():
 
-    global last_news
+    global posted_news
 
     print("NEWS BOT STARTED")
 
@@ -148,9 +169,9 @@ def news_loop():
 
                 feed=feedparser.parse(url)
 
-                for entry in feed.entries[:20]:
+                for entry in feed.entries[:40]:
 
-                    if entry.link!=last_news:
+                    if entry.link not in posted_news:
 
                         text=entry.title+entry.summary
 
@@ -172,9 +193,14 @@ def news_loop():
 
                             print("Sent to Telegram")
 
-                            last_news=entry.link
+                            posted_news.add(entry.link)
+
+                            if len(posted_news)>1000:
+                                posted_news.clear()
 
                             break
+
+                time.sleep(1)
 
         except Exception as e:
 
@@ -185,7 +211,16 @@ def news_loop():
 
 @app.route("/")
 def home():
-    return "News bot running"
+
+    return "Global News Bot Running"
+
+
+@app.route("/test")
+def test():
+
+    send_message("机器人测试成功 ✅")
+
+    return "Test message sent"
 
 
 if __name__=="__main__":
