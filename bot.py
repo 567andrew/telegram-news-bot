@@ -6,10 +6,10 @@ import time
 import threading
 import re
 
-TOKEN="8627523908:AAHN56EVou0vnBux9Gt1KtRKJQn9BFjg0FY"
-CHAT_ID="-1003800156451"
+TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
-app=Flask(__name__)
+app = Flask(__name__)
 
 posted=set()
 
@@ -29,16 +29,38 @@ NEWS_FEEDS={
 "Forbes":"https://www.forbes.com/world-news/feed/"
 }
 
+# 自动翻译
+def translate(text):
+
+    try:
+
+        url="https://translate.googleapis.com/translate_a/single"
+
+        params={
+            "client":"gtx",
+            "sl":"auto",
+            "tl":"zh",
+            "dt":"t",
+            "q":text[:400]
+        }
+
+        r=requests.get(url,params=params,timeout=5)
+
+        return r.json()[0][0][0]
+
+    except:
+
+        return text
+
+
 def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-    r=requests.post(url,json={
+    requests.post(url,json={
         "chat_id":CHAT_ID,
         "text":text
     })
-
-    print("Telegram:",r.text)
 
 
 def send_photo(photo,text):
@@ -47,7 +69,7 @@ def send_photo(photo,text):
 
         url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 
-        r=requests.post(
+        requests.post(
             url,
             data={
                 "chat_id":CHAT_ID,
@@ -58,11 +80,8 @@ def send_photo(photo,text):
             }
         )
 
-        print("Photo:",r.text)
+    except:
 
-    except Exception as e:
-
-        print("Photo error:",e)
         send_message(text)
 
 
@@ -76,41 +95,30 @@ def extract_image(summary):
     return None
 
 
-def build_news(entry,source):
+def build_intel(entry,source):
 
     title=entry.title
 
-    message=f"""
-🌍 全球新闻
+    chinese=translate(title)
 
-标题
-{title}
+    intel=f"""
+🌍 GLOBAL INTEL
 
-WHO
-Unknown
+{chinese}
 
-WHAT
-{title}
-
-WHERE
-Global
-
-WHEN
+TIME
 Latest
-
-WHY
-Developing
 
 SRC
 {source}
 """
 
-    return message
+    return intel
 
 
 def news_loop():
 
-    print("GLOBAL RADAR STARTED")
+    print("GLOBAL INTEL RADAR STARTED")
 
     while True:
 
@@ -129,7 +137,7 @@ def news_loop():
 
                 if entry.link not in posted:
 
-                    msg=build_news(entry,source)
+                    intel=build_intel(entry,source)
 
                     img=None
 
@@ -137,9 +145,9 @@ def news_loop():
                         img=extract_image(entry.summary)
 
                     if img:
-                        send_photo(img,msg)
+                        send_photo(img,intel)
                     else:
-                        send_message(msg)
+                        send_message(intel)
 
                     posted.add(entry.link)
 
@@ -157,22 +165,22 @@ def news_loop():
 @app.route("/")
 def home():
 
-    return "Global Radar Running"
+    return "Global Intel Radar Running"
 
 
 @app.route("/test")
 def test():
 
-    send_message("Radar Test OK")
+    send_message("全球情报系统测试成功")
 
     return "Test OK"
 
 
 if __name__=="__main__":
 
-    print("SUPER GLOBAL RADAR STARTED")
+    print("GLOBAL INTEL SYSTEM STARTED")
 
-    send_message("全球雷达系统启动")
+    send_message("全球情报雷达系统启动")
 
     thread=threading.Thread(target=news_loop)
     thread.daemon=True
