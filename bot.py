@@ -26,6 +26,7 @@ NEWS_FEEDS={
 "DW":"https://rss.dw.com/xml/rss-en-world",
 "France24":"https://www.france24.com/en/rss",
 "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
+"TechCrunch":"https://techcrunch.com/feed/",
 "Forbes":"https://www.forbes.com/world-news/feed/"
 }
 
@@ -41,7 +42,7 @@ def translate(text):
             "sl":"auto",
             "tl":"zh",
             "dt":"t",
-            "q":text[:400]
+            "q":text[:500]
         }
 
         r=requests.get(url,params=params,timeout=5)
@@ -95,25 +96,28 @@ def extract_image(summary):
     return None
 
 
+# 情报模板生成
 def build_intel(entry,source):
 
-    title=entry.title
+    text = entry.title
 
-    chinese=translate(title)
+    if hasattr(entry,"summary"):
+        text = entry.title + ". " + entry.summary
 
-    intel=f"""
+    chinese = translate(text)
+
+    intel = chinese[:160]
+
+    message=f"""
 🌍 GLOBAL INTEL
 
-{chinese}
-
-TIME
-Latest
+{intel}
 
 SRC
 {source}
 """
 
-    return intel
+    return message
 
 
 def news_loop():
@@ -164,15 +168,12 @@ def news_loop():
 
 @app.route("/")
 def home():
-
     return "Global Intel Radar Running"
 
 
 @app.route("/test")
 def test():
-
-    send_message("全球情报系统测试成功")
-
+    send_message("情报系统测试成功")
     return "Test OK"
 
 
