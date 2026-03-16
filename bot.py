@@ -6,7 +6,7 @@ import time
 import threading
 import re
 
-TOKEN="BOT8627523908:AAHN56EVou0vnBux9Gt1KtRKJQn9BFjg0FY"
+TOKEN="8627523908:AAHN56EVou0vnBux9Gt1KtRKJQn9BFjg0FY"
 CHAT_ID="-1003800156451"
 
 app=Flask(__name__)
