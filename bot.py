@@ -36,13 +36,8 @@ NEWS_FEEDS={
 "Politico":"https://www.politico.com/rss/politics08.xml",
 "Axios":"https://api.axios.com/feed/",
 "Time":"https://time.com/feed/",
-"Forbes":"https://www.forbes.com/world-news/feed/",
+"Forbes":"https://www.forbes.com/world-news/feed/"
 }
-
-TRENDING=[
-"nato","tiktok","bitcoin","tesla","openai",
-"ukraine","gaza","ai","chip","nvidia"
-]
 
 def translate(text):
 
@@ -65,47 +60,6 @@ def translate(text):
     except:
 
         return text
-
-
-def news_score(text):
-
-    text=text.lower()
-
-    score=0
-
-    important=[
-    "war","attack","missile","military","conflict",
-    "china","russia","usa","iran","israel",
-    "president","government","election"
-    ]
-
-    medium=[
-    "economy","bank","oil","gas",
-    "technology","ai","cyber"
-    ]
-
-    normal=[
-    "police","crime","flood","storm",
-    "earthquake","explosion","disaster"
-    ]
-
-    for w in important:
-        if w in text:
-            score+=3
-
-    for w in medium:
-        if w in text:
-            score+=2
-
-    for w in normal:
-        if w in text:
-            score+=1
-
-    for w in TRENDING:
-        if w in text:
-            score+=2
-
-    return score
 
 
 def extract_image(summary):
@@ -166,21 +120,6 @@ def format_news(entry,source):
 🧾 总结
 {short}
 
-👤 Who
-Unknown
-
-📍 Where
-Unknown
-
-⏰ When
-Recent
-
-⚡ What
-{title}
-
-❓ Why
-Developing
-
 📰 来源：{source}
 """
 
@@ -209,27 +148,21 @@ def news_loop():
 
                         text=entry.title+entry.summary
 
-                        score=news_score(text)
+                        msg=format_news(entry,source)
 
-                        if score>=1:
+                        img=extract_image(entry.summary)
 
-                            print("News:",entry.title)
+                        if img:
+                            send_photo(img,msg)
+                        else:
+                            send_message(msg)
 
-                            msg=format_news(entry,source)
+                        posted_news.add(entry.link)
 
-                            img=extract_image(entry.summary)
+                        if len(posted_news)>2000:
+                            posted_news.clear()
 
-                            if img:
-                                send_photo(img,msg)
-                            else:
-                                send_message(msg)
-
-                            posted_news.add(entry.link)
-
-                            if len(posted_news)>2000:
-                                posted_news.clear()
-
-                            break
+                        break
 
                 time.sleep(1)
 
@@ -249,7 +182,7 @@ def home():
 @app.route("/test")
 def test():
 
-    send_message("雷达机器人运行正常 ✅")
+    send_message("机器人运行正常 ✅")
 
     return "Test OK"
 
