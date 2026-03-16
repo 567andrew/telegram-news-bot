@@ -11,9 +11,9 @@ CHAT_ID = "你的CHAT_ID"
 
 app = Flask(__name__)
 
-posted_news = set()
+posted_news=set()
 
-NEWS_FEEDS = {
+NEWS_FEEDS={
 
 "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
 "AP":"https://apnews.com/rss",
@@ -28,16 +28,12 @@ NEWS_FEEDS = {
 "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
 
 "CBS":"https://www.cbsnews.com/latest/rss/world",
-"ABC":"https://abcnews.go.com/abcnews/internationalheadlines"
-}
+"ABC":"https://abcnews.go.com/abcnews/internationalheadlines",
 
-KEYWORDS = [
-"war","attack","missile","military","conflict",
-"china","russia","usa","iran","israel",
-"president","government","election",
-"economy","inflation","bank","oil","gas",
-"ai","technology","cyber"
-]
+"France24":"https://www.france24.com/en/rss",
+"DW":"https://rss.dw.com/xml/rss-en-world",
+"SkyNews":"https://feeds.skynews.com/feeds/rss/world.xml"
+}
 
 def translate(text):
 
@@ -62,16 +58,41 @@ def translate(text):
         return text
 
 
-def is_major_news(text):
+def news_score(text):
 
     text=text.lower()
 
-    for k in KEYWORDS:
+    score=0
 
-        if k in text:
-            return True
+    important=[
+    "war","attack","missile","military","conflict",
+    "china","russia","usa","iran","israel",
+    "president","government","election"
+    ]
 
-    return False
+    medium=[
+    "economy","bank","oil","gas",
+    "technology","ai","cyber"
+    ]
+
+    normal=[
+    "police","crime","flood","storm",
+    "earthquake","explosion","disaster"
+    ]
+
+    for w in important:
+        if w in text:
+            score+=3
+
+    for w in medium:
+        if w in text:
+            score+=2
+
+    for w in normal:
+        if w in text:
+            score+=1
+
+    return score
 
 
 def extract_image(summary):
@@ -175,7 +196,9 @@ def news_loop():
 
                         text=entry.title+entry.summary
 
-                        if is_major_news(text):
+                        score=news_score(text)
+
+                        if score>=2:
 
                             print("News found:",entry.title)
 
@@ -190,8 +213,6 @@ def news_loop():
                             else:
 
                                 send_message(msg)
-
-                            print("Sent to Telegram")
 
                             posted_news.add(entry.link)
 
@@ -212,20 +233,24 @@ def news_loop():
 @app.route("/")
 def home():
 
-    return "Global News Bot Running"
+    return "Global News Radar Running"
 
 
 @app.route("/test")
 def test():
 
-    send_message("机器人测试成功 ✅")
+    send_message("雷达机器人测试成功 ✅")
 
-    return "Test message sent"
+    return "Test OK"
 
 
 if __name__=="__main__":
 
+    print("Starting Radar Bot...")
+
     thread=threading.Thread(target=news_loop)
+
+    thread.daemon=True
 
     thread.start()
 
