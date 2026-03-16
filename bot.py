@@ -42,7 +42,7 @@ def translate(text):
             "sl":"auto",
             "tl":"zh",
             "dt":"t",
-            "q":text[:500]
+            "q":text[:800]
         }
 
         r=requests.get(url,params=params,timeout=5)
@@ -77,7 +77,7 @@ def send_photo(photo,text):
                 "caption":text
             },
             files={
-                "photo":requests.get(photo,timeout=5).content
+                "photo":requests.get(photo,timeout=10).content
             }
         )
 
@@ -86,7 +86,11 @@ def send_photo(photo,text):
         send_message(text)
 
 
+# 提取图片
 def extract_image(summary):
+
+    if not summary:
+        return None
 
     img=re.search(r'<img.*?src="(.*?)"',summary)
 
@@ -96,17 +100,18 @@ def extract_image(summary):
     return None
 
 
-# 情报模板生成
+# 情报整理
 def build_intel(entry,source):
 
-    text = entry.title
+    text=entry.title
 
     if hasattr(entry,"summary"):
-        text = entry.title + ". " + entry.summary
+        text=entry.title+" "+entry.summary
 
-    chinese = translate(text)
+    chinese=translate(text)
 
-    intel = chinese[:160]
+    # 控制情报长度
+    intel=chinese[:230]
 
     message=f"""
 🌍 GLOBAL INTEL
@@ -168,12 +173,15 @@ def news_loop():
 
 @app.route("/")
 def home():
+
     return "Global Intel Radar Running"
 
 
 @app.route("/test")
 def test():
+
     send_message("情报系统测试成功")
+
     return "Test OK"
 
 
