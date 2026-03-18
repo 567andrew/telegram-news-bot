@@ -6,7 +6,7 @@ import time
 import threading
 import re
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, UTC
 
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -14,6 +14,7 @@ CHAT_ID = os.environ["CHAT_ID"]
 app = Flask(__name__)
 
 posted=set()
+posted_titles=set()
 
 NEWS_FEEDS={
 
@@ -32,15 +33,11 @@ NEWS_FEEDS={
 "Forbes":"https://www.forbes.com/world-news/feed/"
 }
 
-# 清理HTML
 def clean_html(text):
 
     soup=BeautifulSoup(text,"lxml")
-
     return soup.get_text()
 
-
-# 清理垃圾文本
 def clean_article(text):
 
     bad_words=[
@@ -51,13 +48,11 @@ def clean_article(text):
     ]
 
     for w in bad_words:
-
         text=text.replace(w,"")
 
     return text
 
 
-# 翻译
 def translate(text):
 
     try:
@@ -81,7 +76,6 @@ def translate(text):
         return text
 
 
-# 正文抓取
 def fetch_article(url):
 
     try:
@@ -107,7 +101,6 @@ def fetch_article(url):
         return ""
 
 
-# 分类
 def classify_news(text):
 
     text=text.lower()
@@ -127,15 +120,24 @@ def classify_news(text):
     return "world"
 
 
-# 时间
 def news_time():
 
-    now=datetime.utcnow()
+    now=datetime.now(UTC)
 
     return now.strftime("%d %b").lower()
 
 
-# 图片提取
+def normalize_title(title):
+
+    title=title.lower()
+
+    title=re.sub(r'[^a-z0-9 ]','',title)
+
+    words=title.split()
+
+    return " ".join(words[:6])
+
+
 def extract_image(entry):
 
     try:
@@ -173,7 +175,6 @@ def extract_image(entry):
     return None
 
 
-# 分段排版
 def format_text(text):
 
     sentences=re.split(r'[。.!?]',text)
@@ -187,7 +188,6 @@ def format_text(text):
     return text
 
 
-# 构建新闻
 def build_intel(entry,source):
 
     text=entry.title
@@ -222,7 +222,6 @@ source
     return message
 
 
-# 发送文字
 def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -233,7 +232,6 @@ def send_message(text):
     })
 
 
-# 发送图片
 def send_photo(photo,text):
 
     try:
@@ -256,7 +254,67 @@ def send_photo(photo,text):
         send_message(text)
 
 
-# 新闻循环
+def fetch_x_trending():
+
+    try:
+
+        url="https://nitter.net/explore"
+
+        r=requests.get(url,timeout=10)
+
+        soup=BeautifulSoup(r.text,"lxml")
+
+        tweets=soup.select(".timeline-item")
+
+        titles=[]
+
+        for t in tweets[:10]:
+
+            text=t.get_text()
+
+            text=re.sub(r'\s+',' ',text)
+
+            titles.append(text[:120])
+
+        return titles
+
+    except:
+
+        return []
+
+
+def x_daily_loop():
+
+    sent_today=False
+
+    while True:
+
+        now=datetime.now()
+
+        if now.hour==11 and now.minute==55 and not sent_today:
+
+            tweets=fetch_x_trending()
+
+            if tweets:
+
+                text="🌍 GLOBAL INTEL\n▸ social\n\nx trending today\n\n"
+
+                for i,t in enumerate(tweets,1):
+
+                    text+=f"{i}. {t}\n"
+
+                text+="\nsource\nx | trending"
+
+                send_message(text)
+
+            sent_today=True
+
+        if now.hour==0:
+            sent_today=False
+
+        time.sleep(60)
+
+
 def news_loop():
 
     print("GLOBAL INTEL RADAR STARTED")
@@ -267,6 +325,8 @@ def news_loop():
 
             for source,url in NEWS_FEEDS.items():
 
+                print("Scanning:",source)
+
                 feed=feedparser.parse(url)
 
                 if not feed.entries:
@@ -274,9 +334,11 @@ def news_loop():
 
                 for entry in feed.entries[:3]:
 
-                    key=entry.title.lower()
+                    key=(entry.title+entry.link).lower()
 
-                    if key in posted:
+                    title_key=normalize_title(entry.title)
+
+                    if key in posted or title_key in posted_titles:
                         continue
 
                     intel=build_intel(entry,source)
@@ -289,6 +351,13 @@ def news_loop():
                         send_message(intel)
 
                     posted.add(key)
+                    posted_titles.add(title_key)
+
+                    if len(posted)>500:
+                        posted.clear()
+
+                    if len(posted_titles)>500:
+                        posted_titles.clear()
 
                     time.sleep(2)
 
@@ -322,10 +391,12 @@ if __name__=="__main__":
     send_message("全球情报雷达系统启动")
 
     thread=threading.Thread(target=news_loop)
-
     thread.daemon=True
-
     thread.start()
+
+    xthread=threading.Thread(target=x_daily_loop)
+    xthread.daemon=True
+    xthread.start()
 
     port=int(os.environ.get("PORT",10000))
 
