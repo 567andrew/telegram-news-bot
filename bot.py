@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 import requests
 import os
 import feedparser
@@ -8,10 +8,10 @@ import re
 from bs4 import BeautifulSoup
 from datetime import datetime, UTC
 
-TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+TOKEN=os.environ["BOT_TOKEN"]
+CHAT_ID=os.environ["CHAT_ID"]
 
-app = Flask(__name__)
+app=Flask(__name__)
 
 posted=set()
 posted_titles=set()
@@ -31,27 +31,13 @@ NEWS_FEEDS={
 "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
 "TechCrunch":"https://techcrunch.com/feed/",
 "Forbes":"https://www.forbes.com/world-news/feed/"
+
 }
 
 def clean_html(text):
 
     soup=BeautifulSoup(text,"lxml")
     return soup.get_text()
-
-def clean_article(text):
-
-    bad_words=[
-        "enable javascript",
-        "disable ad blocker",
-        "advertisement",
-        "sign up"
-    ]
-
-    for w in bad_words:
-        text=text.replace(w,"")
-
-    return text
-
 
 def translate(text):
 
@@ -84,47 +70,61 @@ def fetch_article(url):
 
         soup=BeautifulSoup(r.text,"lxml")
 
-        paragraphs=soup.select("article p")
-
-        if not paragraphs:
-            paragraphs=soup.select("main p")
-
-        if not paragraphs:
-            paragraphs=soup.find_all("p")
+        paragraphs=soup.find_all("p")
 
         text=" ".join([p.get_text() for p in paragraphs[:6]])
 
-        return clean_article(text)
+        return text
 
     except:
 
         return ""
 
 
+def ai_summary(text):
+
+    sentences=re.split(r'[。.!?]',text)
+
+    clean=[s.strip() for s in sentences if len(s.strip())>15]
+
+    if len(clean)>=4:
+
+        return clean[0]+"。"+clean[1]+"。"+clean[2]+"。"+clean[3]+"。"
+
+    if len(clean)>=3:
+
+        return clean[0]+"。"+clean[1]+"。"+clean[2]+"。"
+
+    return text
+
+
+def format_text(text):
+
+    sentences=re.split(r'[。.!?]',text)
+
+    clean=[s.strip() for s in sentences if len(s.strip())>10]
+
+    if len(clean)>=4:
+
+        return clean[0]+"。\n\n"+clean[1]+"。 "+clean[2]+"。 "+clean[3]+"。"
+
+    return text
+
+
 def classify_news(text):
 
     text=text.lower()
 
-    if any(w in text for w in ["israel","iran","gaza","hormuz","middle east"]):
-        return "middle east"
-
-    if any(w in text for w in ["war","attack","missile","airstrike","bomb"]):
+    if any(w in text for w in ["war","missile","attack","airstrike"]):
         return "war"
 
-    if any(w in text for w in ["economy","inflation","bank","market"]):
+    if any(w in text for w in ["economy","bank","inflation","market"]):
         return "economy"
 
-    if any(w in text for w in ["ai","technology","chip","robot"]):
+    if any(w in text for w in ["ai","tech","chip","robot"]):
         return "tech"
 
     return "world"
-
-
-def news_time():
-
-    now=datetime.now(UTC)
-
-    return now.strftime("%d %b").lower()
 
 
 def normalize_title(title):
@@ -138,17 +138,16 @@ def normalize_title(title):
     return " ".join(words[:6])
 
 
+def news_time():
+
+    now=datetime.now(UTC)
+
+    return now.strftime("%d %b").lower()
+
+
 def extract_image(entry):
 
     try:
-
-        if "media_content" in entry:
-
-            for m in entry.media_content:
-
-                if "url" in m:
-
-                    return m["url"]
 
         if hasattr(entry,"summary"):
 
@@ -158,16 +157,6 @@ def extract_image(entry):
 
                 return img.group(1)
 
-        r=requests.get(entry.link,timeout=10)
-
-        soup=BeautifulSoup(r.text,"lxml")
-
-        tag=soup.find("meta",property="og:image")
-
-        if tag:
-
-            return tag["content"]
-
     except:
 
         pass
@@ -175,34 +164,25 @@ def extract_image(entry):
     return None
 
 
-def format_text(text):
-
-    sentences=re.split(r'[。.!?]',text)
-
-    clean=[s.strip() for s in sentences if len(s.strip())>15]
-
-    if len(clean)>=4:
-
-        return clean[0]+"。\n\n"+clean[1]+"。 "+clean[2]+"。 "+clean[3]+"。"
-
-    return text
-
-
 def build_intel(entry,source):
 
     text=entry.title
 
     if hasattr(entry,"summary"):
+
         text=entry.title+" "+entry.summary
 
     article=fetch_article(entry.link)
 
     if article:
+
         text=text+" "+article
 
     text=clean_html(text)
 
     chinese=translate(text)
+
+    chinese=ai_summary(chinese)
 
     chinese=format_text(chinese)
 
@@ -226,10 +206,7 @@ def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
 
-    requests.post(url,json={
-        "chat_id":CHAT_ID,
-        "text":text
-    })
+    requests.post(url,json={"chat_id":CHAT_ID,"text":text})
 
 
 def send_photo(photo,text):
@@ -239,14 +216,13 @@ def send_photo(photo,text):
         url=f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
 
         requests.post(
+
             url,
-            data={
-                "chat_id":CHAT_ID,
-                "caption":text
-            },
-            files={
-                "photo":requests.get(photo,timeout=15).content
-            }
+
+            data={"chat_id":CHAT_ID,"caption":text},
+
+            files={"photo":requests.get(photo,timeout=15).content}
+
         )
 
     except:
@@ -310,6 +286,7 @@ def x_daily_loop():
             sent_today=True
 
         if now.hour==0:
+
             sent_today=False
 
         time.sleep(60)
@@ -325,11 +302,10 @@ def news_loop():
 
             for source,url in NEWS_FEEDS.items():
 
-                print("Scanning:",source)
-
                 feed=feedparser.parse(url)
 
                 if not feed.entries:
+
                     continue
 
                 for entry in feed.entries[:3]:
@@ -339,6 +315,7 @@ def news_loop():
                     title_key=normalize_title(entry.title)
 
                     if key in posted or title_key in posted_titles:
+
                         continue
 
                     intel=build_intel(entry,source)
@@ -346,17 +323,23 @@ def news_loop():
                     img=extract_image(entry)
 
                     if img:
+
                         send_photo(img,intel)
+
                     else:
+
                         send_message(intel)
 
                     posted.add(key)
+
                     posted_titles.add(title_key)
 
                     if len(posted)>500:
+
                         posted.clear()
 
                     if len(posted_titles)>500:
+
                         posted_titles.clear()
 
                     time.sleep(2)
@@ -365,18 +348,16 @@ def news_loop():
 
             print("ERROR:",e)
 
-        print("Next scan in 5 minutes")
-
         time.sleep(300)
 
 
-@app.route("/")
+@app.route("/",methods=["GET","POST"])
 def home():
 
     return "Global Intel Radar Running"
 
 
-@app.route("/test")
+@app.route("/test",methods=["GET","POST"])
 def test():
 
     send_message("新闻机器人测试成功")
@@ -391,11 +372,15 @@ if __name__=="__main__":
     send_message("全球情报雷达系统启动")
 
     thread=threading.Thread(target=news_loop)
+
     thread.daemon=True
+
     thread.start()
 
     xthread=threading.Thread(target=x_daily_loop)
+
     xthread.daemon=True
+
     xthread.start()
 
     port=int(os.environ.get("PORT",10000))
