@@ -5,6 +5,7 @@ import feedparser
 import time
 import threading
 import re
+from bs4 import BeautifulSoup
 
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -42,10 +43,10 @@ def translate(text):
             "sl":"auto",
             "tl":"zh",
             "dt":"t",
-            "q":text[:800]
+            "q":text[:1000]
         }
 
-        r=requests.get(url,params=params,timeout=5)
+        r=requests.get(url,params=params,timeout=10)
 
         return r.json()[0][0][0]
 
@@ -54,6 +55,103 @@ def translate(text):
         return text
 
 
+# 抓取新闻正文
+def fetch_article(url):
+
+    try:
+
+        r=requests.get(url,timeout=10)
+
+        soup=BeautifulSoup(r.text,"lxml")
+
+        paragraphs=soup.find_all("p")
+
+        text=" ".join([p.get_text() for p in paragraphs[:5]])
+
+        return text
+
+    except:
+
+        return ""
+
+
+# 提取图片
+def extract_image(summary):
+
+    if not summary:
+        return None
+
+    img=re.search(r'<img.*?src="(.*?)"',summary)
+
+    if img:
+        return img.group(1)
+
+    return None
+
+
+# 提取视频
+def extract_video(summary):
+
+    if not summary:
+        return None
+
+    video=re.search(r'<video.*?src="(.*?)"',summary)
+
+    if video:
+        return video.group(1)
+
+    return None
+
+
+# 新闻分类
+def classify_news(text):
+
+    text=text.lower()
+
+    if any(word in text for word in ["israel","iran","gaza","middle east","hormuz"]):
+        return "⚠️ MIDDLE EAST"
+
+    if any(word in text for word in ["war","missile","attack","military"]):
+        return "⚔️ WAR"
+
+    if any(word in text for word in ["economy","inflation","bank","market"]):
+        return "💰 ECONOMY"
+
+    if any(word in text for word in ["ai","technology","chip","robot"]):
+        return "🧠 TECH"
+
+    return "🌍 WORLD"
+
+
+# 构建新闻内容
+def build_intel(entry,source):
+
+    text=entry.title
+
+    article=fetch_article(entry.link)
+
+    if article:
+        text=entry.title+" "+article
+
+    chinese=translate(text)
+
+    category=classify_news(text)
+
+    message=f"""
+🌍 GLOBAL INTEL
+
+{category}
+
+{chinese}
+
+SOURCE
+{source}
+"""
+
+    return message
+
+
+# 发送文字
 def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -64,6 +162,7 @@ def send_message(text):
     })
 
 
+# 发送图片
 def send_photo(photo,text):
 
     try:
@@ -86,45 +185,30 @@ def send_photo(photo,text):
         send_message(text)
 
 
-# 提取图片
-def extract_image(summary):
+# 发送视频
+def send_video(video,text):
 
-    if not summary:
-        return None
+    try:
 
-    img=re.search(r'<img.*?src="(.*?)"',summary)
+        url=f"https://api.telegram.org/bot{TOKEN}/sendVideo"
 
-    if img:
-        return img.group(1)
+        requests.post(
+            url,
+            data={
+                "chat_id":CHAT_ID,
+                "caption":text
+            },
+            files={
+                "video":requests.get(video,timeout=20).content
+            }
+        )
 
-    return None
+    except:
 
-
-# 情报整理
-def build_intel(entry,source):
-
-    text=entry.title
-
-    if hasattr(entry,"summary"):
-        text=entry.title+" "+entry.summary
-
-    chinese=translate(text)
-
-    # 控制情报长度
-    intel=chinese[:230]
-
-    message=f"""
-🌍 GLOBAL INTEL
-
-{intel}
-
-SRC
-{source}
-"""
-
-    return message
+        send_message(text)
 
 
+# 新闻扫描
 def news_loop():
 
     print("GLOBAL INTEL RADAR STARTED")
@@ -142,33 +226,44 @@ def news_loop():
                 if not feed.entries:
                     continue
 
-                entry=feed.entries[0]
+                for entry in feed.entries[:3]:
 
-                if entry.link not in posted:
+                    if entry.link in posted:
+                        continue
 
                     intel=build_intel(entry,source)
 
                     img=None
+                    video=None
 
                     if hasattr(entry,"summary"):
+
                         img=extract_image(entry.summary)
+                        video=extract_video(entry.summary)
 
                     if img:
+
                         send_photo(img,intel)
+
+                    elif video:
+
+                        send_video(video,intel)
+
                     else:
+
                         send_message(intel)
 
                     posted.add(entry.link)
 
-                time.sleep(1)
+                    time.sleep(2)
 
         except Exception as e:
 
             print("ERROR:",e)
 
-        print("Next scan in 5 minutes")
+        print("Next scan in 60 seconds")
 
-        time.sleep(300)
+        time.sleep(60)
 
 
 @app.route("/")
@@ -180,7 +275,7 @@ def home():
 @app.route("/test")
 def test():
 
-    send_message("情报系统测试成功")
+    send_message("新闻机器人测试成功")
 
     return "Test OK"
 
