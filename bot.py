@@ -31,7 +31,32 @@ NEWS_FEEDS={
 "Forbes":"https://www.forbes.com/world-news/feed/"
 }
 
-# 自动翻译
+# 清理HTML
+def clean_html(text):
+
+    soup=BeautifulSoup(text,"lxml")
+
+    return soup.get_text()
+
+
+# 清理垃圾文本
+def clean_article(text):
+
+    bad_words=[
+        "enable javascript",
+        "disable ad blocker",
+        "advertisement",
+        "sign up"
+    ]
+
+    for w in bad_words:
+
+        text=text.replace(w,"")
+
+    return text
+
+
+# 翻译
 def translate(text):
 
     try:
@@ -43,7 +68,7 @@ def translate(text):
             "sl":"auto",
             "tl":"zh",
             "dt":"t",
-            "q":text[:1000]
+            "q":text[:1200]
         }
 
         r=requests.get(url,params=params,timeout=10)
@@ -55,7 +80,7 @@ def translate(text):
         return text
 
 
-# 抓取新闻正文
+# 抓正文
 def fetch_article(url):
 
     try:
@@ -64,18 +89,22 @@ def fetch_article(url):
 
         soup=BeautifulSoup(r.text,"lxml")
 
-        paragraphs=soup.find_all("p")
+        paragraphs=soup.select("article p")
+
+        if not paragraphs:
+
+            paragraphs=soup.find_all("p")
 
         text=" ".join([p.get_text() for p in paragraphs[:5]])
 
-        return text
+        return clean_article(text)
 
     except:
 
         return ""
 
 
-# 新闻分类
+# 分类
 def classify_news(text):
 
     text=text.lower()
@@ -83,7 +112,7 @@ def classify_news(text):
     if any(w in text for w in ["israel","iran","gaza","middle east","hormuz"]):
         return "⚠️ MIDDLE EAST"
 
-    if any(w in text for w in ["war","missile","attack","military"]):
+    if any(w in text for w in ["war","missile","attack","airstrike","bomb","military"]):
         return "⚔️ WAR"
 
     if any(w in text for w in ["economy","inflation","bank","market"]):
@@ -95,7 +124,7 @@ def classify_news(text):
     return "🌍 WORLD"
 
 
-# 提取高清图片
+# 图片提取
 def extract_image(entry):
 
     try:
@@ -141,7 +170,7 @@ def extract_image(entry):
     return None
 
 
-# 提取视频
+# 视频提取
 def extract_video(summary):
 
     if not summary:
@@ -155,7 +184,7 @@ def extract_video(summary):
     return None
 
 
-# 构建新闻内容
+# 构建新闻
 def build_intel(entry,source):
 
     text=entry.title
@@ -165,6 +194,8 @@ def build_intel(entry,source):
     if article:
 
         text=entry.title+" "+article
+
+    text=clean_html(text)
 
     chinese=translate(text)
 
@@ -241,7 +272,7 @@ def send_video(video,text):
         send_message(text)
 
 
-# 新闻扫描
+# 新闻循环
 def news_loop():
 
     print("GLOBAL INTEL RADAR STARTED")
