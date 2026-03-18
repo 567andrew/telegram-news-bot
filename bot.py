@@ -32,7 +32,7 @@ NEWS_FEEDS={
 "Forbes":"https://www.forbes.com/world-news/feed/"
 }
 
-# HTML清理
+# 清理HTML
 def clean_html(text):
 
     soup=BeautifulSoup(text,"lxml")
@@ -81,7 +81,7 @@ def translate(text):
         return text
 
 
-# 抓取正文
+# 正文抓取
 def fetch_article(url):
 
     try:
@@ -113,26 +113,26 @@ def classify_news(text):
     text=text.lower()
 
     if any(w in text for w in ["israel","iran","gaza","hormuz","middle east"]):
-        return "MIDDLE EAST"
+        return "middle east"
 
     if any(w in text for w in ["war","attack","missile","airstrike","bomb"]):
-        return "WAR"
+        return "war"
 
     if any(w in text for w in ["economy","inflation","bank","market"]):
-        return "ECONOMY"
+        return "economy"
 
     if any(w in text for w in ["ai","technology","chip","robot"]):
-        return "TECH"
+        return "tech"
 
-    return "WORLD"
+    return "world"
 
 
-# 日期
+# 时间
 def news_time():
 
     now=datetime.utcnow()
 
-    return now.strftime("%d %b")
+    return now.strftime("%d %b").lower()
 
 
 # 图片提取
@@ -173,6 +173,20 @@ def extract_image(entry):
     return None
 
 
+# 分段排版
+def format_text(text):
+
+    sentences=re.split(r'[。.!?]',text)
+
+    clean=[s.strip() for s in sentences if len(s.strip())>15]
+
+    if len(clean)>=4:
+
+        return clean[0]+"。\n\n"+clean[1]+"。 "+clean[2]+"。 "+clean[3]+"。"
+
+    return text
+
+
 # 构建新闻
 def build_intel(entry,source):
 
@@ -190,6 +204,8 @@ def build_intel(entry,source):
 
     chinese=translate(text)
 
+    chinese=format_text(chinese)
+
     category=classify_news(text)
 
     date=news_time()
@@ -199,14 +215,14 @@ def build_intel(entry,source):
 
 {chinese}
 
-SOURCE
-{source} | {date}
+source
+{source.lower()} | {date}
 """
 
     return message
 
 
-# 发送消息
+# 发送文字
 def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -258,7 +274,9 @@ def news_loop():
 
                 for entry in feed.entries[:3]:
 
-                    if entry.link in posted:
+                    key=entry.title.lower()
+
+                    if key in posted:
                         continue
 
                     intel=build_intel(entry,source)
@@ -270,7 +288,7 @@ def news_loop():
                     else:
                         send_message(intel)
 
-                    posted.add(entry.link)
+                    posted.add(key)
 
                     time.sleep(2)
 
@@ -278,9 +296,9 @@ def news_loop():
 
             print("ERROR:",e)
 
-        print("Next scan in 60 seconds")
+        print("Next scan in 5 minutes")
 
-        time.sleep(60)
+        time.sleep(300)
 
 
 @app.route("/")
