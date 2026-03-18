@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask
 import requests
 import os
 import feedparser
@@ -31,18 +31,19 @@ NEWS_FEEDS={
 "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html",
 "TechCrunch":"https://techcrunch.com/feed/",
 "Forbes":"https://www.forbes.com/world-news/feed/"
-
 }
 
-def clean_html(text):
+# ------------------------
+# 工具函数
+# ------------------------
 
+def clean_html(text):
     soup=BeautifulSoup(text,"lxml")
     return soup.get_text()
 
 def translate(text):
 
     try:
-
         url="https://translate.googleapis.com/translate_a/single"
 
         params={
@@ -58,7 +59,6 @@ def translate(text):
         return r.json()[0][0][0]
 
     except:
-
         return text
 
 
@@ -81,6 +81,10 @@ def fetch_article(url):
         return ""
 
 
+# ------------------------
+# AI摘要
+# ------------------------
+
 def ai_summary(text):
 
     sentences=re.split(r'[。.!?]',text)
@@ -88,15 +92,17 @@ def ai_summary(text):
     clean=[s.strip() for s in sentences if len(s.strip())>15]
 
     if len(clean)>=4:
-
         return clean[0]+"。"+clean[1]+"。"+clean[2]+"。"+clean[3]+"。"
 
     if len(clean)>=3:
-
         return clean[0]+"。"+clean[1]+"。"+clean[2]+"。"
 
     return text
 
+
+# ------------------------
+# 新闻分段
+# ------------------------
 
 def format_text(text):
 
@@ -105,11 +111,14 @@ def format_text(text):
     clean=[s.strip() for s in sentences if len(s.strip())>10]
 
     if len(clean)>=4:
-
         return clean[0]+"。\n\n"+clean[1]+"。 "+clean[2]+"。 "+clean[3]+"。"
 
     return text
 
+
+# ------------------------
+# 分类
+# ------------------------
 
 def classify_news(text):
 
@@ -121,11 +130,15 @@ def classify_news(text):
     if any(w in text for w in ["economy","bank","inflation","market"]):
         return "economy"
 
-    if any(w in text for w in ["ai","tech","chip","robot"]):
+    if any(w in text for w in ["ai","chip","robot","technology"]):
         return "tech"
 
     return "world"
 
+
+# ------------------------
+# 去重
+# ------------------------
 
 def normalize_title(title):
 
@@ -138,6 +151,10 @@ def normalize_title(title):
     return " ".join(words[:6])
 
 
+# ------------------------
+# 时间
+# ------------------------
+
 def news_time():
 
     now=datetime.now(UTC)
@@ -145,9 +162,29 @@ def news_time():
     return now.strftime("%d %b").lower()
 
 
+# ------------------------
+# 图片提取
+# ------------------------
+
 def extract_image(entry):
 
     try:
+
+        if "media_content" in entry:
+
+            for m in entry.media_content:
+
+                if "url" in m:
+
+                    return m["url"]
+
+        if "media_thumbnail" in entry:
+
+            for m in entry.media_thumbnail:
+
+                if "url" in m:
+
+                    return m["url"]
 
         if hasattr(entry,"summary"):
 
@@ -157,12 +194,49 @@ def extract_image(entry):
 
                 return img.group(1)
 
+        r=requests.get(entry.link,timeout=10)
+
+        soup=BeautifulSoup(r.text,"lxml")
+
+        tag=soup.find("meta",property="og:image")
+
+        if tag:
+
+            return tag["content"]
+
     except:
 
         pass
 
     return None
 
+
+# ------------------------
+# 视频提取
+# ------------------------
+
+def extract_video(entry):
+
+    try:
+
+        if hasattr(entry,"summary"):
+
+            video=re.search(r'<video.*?src="(.*?)"',entry.summary)
+
+            if video:
+
+                return video.group(1)
+
+    except:
+
+        pass
+
+    return None
+
+
+# ------------------------
+# 构建新闻
+# ------------------------
 
 def build_intel(entry,source):
 
@@ -202,6 +276,10 @@ source
     return message
 
 
+# ------------------------
+# Telegram发送
+# ------------------------
+
 def send_message(text):
 
     url=f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -229,6 +307,96 @@ def send_photo(photo,text):
 
         send_message(text)
 
+
+def send_video(video,text):
+
+    try:
+
+        url=f"https://api.telegram.org/bot{TOKEN}/sendVideo"
+
+        requests.post(
+
+            url,
+
+            data={"chat_id":CHAT_ID,"caption":text},
+
+            files={"video":requests.get(video,timeout=20).content}
+
+        )
+
+    except:
+
+        send_message(text)
+
+
+# ------------------------
+# 新闻循环
+# ------------------------
+
+def news_loop():
+
+    print("GLOBAL INTEL RADAR STARTED")
+
+    while True:
+
+        try:
+
+            for source,url in NEWS_FEEDS.items():
+
+                feed=feedparser.parse(url)
+
+                if not feed.entries:
+                    continue
+
+                for entry in feed.entries[:3]:
+
+                    key=(entry.title+entry.link).lower()
+
+                    title_key=normalize_title(entry.title)
+
+                    if key in posted or title_key in posted_titles:
+
+                        continue
+
+                    intel=build_intel(entry,source)
+
+                    img=extract_image(entry)
+
+                    video=extract_video(entry)
+
+                    if img:
+
+                        send_photo(img,intel)
+
+                    elif video:
+
+                        send_video(video,intel)
+
+                    else:
+
+                        send_message(intel)
+
+                    posted.add(key)
+                    posted_titles.add(title_key)
+
+                    if len(posted)>500:
+                        posted.clear()
+
+                    if len(posted_titles)>500:
+                        posted_titles.clear()
+
+                    time.sleep(2)
+
+        except Exception as e:
+
+            print("ERROR:",e)
+
+        time.sleep(300)
+
+
+# ------------------------
+# X trending
+# ------------------------
 
 def fetch_x_trending():
 
@@ -292,64 +460,9 @@ def x_daily_loop():
         time.sleep(60)
 
 
-def news_loop():
-
-    print("GLOBAL INTEL RADAR STARTED")
-
-    while True:
-
-        try:
-
-            for source,url in NEWS_FEEDS.items():
-
-                feed=feedparser.parse(url)
-
-                if not feed.entries:
-
-                    continue
-
-                for entry in feed.entries[:3]:
-
-                    key=(entry.title+entry.link).lower()
-
-                    title_key=normalize_title(entry.title)
-
-                    if key in posted or title_key in posted_titles:
-
-                        continue
-
-                    intel=build_intel(entry,source)
-
-                    img=extract_image(entry)
-
-                    if img:
-
-                        send_photo(img,intel)
-
-                    else:
-
-                        send_message(intel)
-
-                    posted.add(key)
-
-                    posted_titles.add(title_key)
-
-                    if len(posted)>500:
-
-                        posted.clear()
-
-                    if len(posted_titles)>500:
-
-                        posted_titles.clear()
-
-                    time.sleep(2)
-
-        except Exception as e:
-
-            print("ERROR:",e)
-
-        time.sleep(300)
-
+# ------------------------
+# Flask
+# ------------------------
 
 @app.route("/",methods=["GET","POST"])
 def home():
@@ -364,6 +477,10 @@ def test():
 
     return "Test OK"
 
+
+# ------------------------
+# MAIN
+# ------------------------
 
 if __name__=="__main__":
 
