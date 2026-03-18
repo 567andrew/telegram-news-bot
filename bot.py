@@ -7,10 +7,10 @@ import threading
 import re
 from bs4 import BeautifulSoup
 
-TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+TOKEN=os.environ["BOT_TOKEN"]
+CHAT_ID=os.environ["CHAT_ID"]
 
-app = Flask(__name__)
+app=Flask(__name__)
 
 posted=set()
 
@@ -75,16 +75,68 @@ def fetch_article(url):
         return ""
 
 
-# 提取图片
-def extract_image(summary):
+# 新闻分类
+def classify_news(text):
 
-    if not summary:
-        return None
+    text=text.lower()
 
-    img=re.search(r'<img.*?src="(.*?)"',summary)
+    if any(w in text for w in ["israel","iran","gaza","middle east","hormuz"]):
+        return "⚠️ MIDDLE EAST"
 
-    if img:
-        return img.group(1)
+    if any(w in text for w in ["war","missile","attack","military"]):
+        return "⚔️ WAR"
+
+    if any(w in text for w in ["economy","inflation","bank","market"]):
+        return "💰 ECONOMY"
+
+    if any(w in text for w in ["ai","technology","chip","robot"]):
+        return "🧠 TECH"
+
+    return "🌍 WORLD"
+
+
+# 提取高清图片
+def extract_image(entry):
+
+    try:
+
+        if "media_content" in entry:
+
+            for m in entry.media_content:
+
+                if "url" in m:
+
+                    return m["url"]
+
+        if "media_thumbnail" in entry:
+
+            for m in entry.media_thumbnail:
+
+                if "url" in m:
+
+                    return m["url"]
+
+        if hasattr(entry,"summary"):
+
+            img=re.search(r'<img.*?src="(.*?)"',entry.summary)
+
+            if img:
+
+                return img.group(1)
+
+        r=requests.get(entry.link,timeout=10)
+
+        soup=BeautifulSoup(r.text,"lxml")
+
+        tag=soup.find("meta",property="og:image")
+
+        if tag:
+
+            return tag["content"]
+
+    except:
+
+        pass
 
     return None
 
@@ -103,26 +155,6 @@ def extract_video(summary):
     return None
 
 
-# 新闻分类
-def classify_news(text):
-
-    text=text.lower()
-
-    if any(word in text for word in ["israel","iran","gaza","middle east","hormuz"]):
-        return "⚠️ MIDDLE EAST"
-
-    if any(word in text for word in ["war","missile","attack","military"]):
-        return "⚔️ WAR"
-
-    if any(word in text for word in ["economy","inflation","bank","market"]):
-        return "💰 ECONOMY"
-
-    if any(word in text for word in ["ai","technology","chip","robot"]):
-        return "🧠 TECH"
-
-    return "🌍 WORLD"
-
-
 # 构建新闻内容
 def build_intel(entry,source):
 
@@ -131,6 +163,7 @@ def build_intel(entry,source):
     article=fetch_article(entry.link)
 
     if article:
+
         text=entry.title+" "+article
 
     chinese=translate(text)
@@ -176,7 +209,7 @@ def send_photo(photo,text):
                 "caption":text
             },
             files={
-                "photo":requests.get(photo,timeout=10).content
+                "photo":requests.get(photo,timeout=15).content
             }
         )
 
@@ -219,8 +252,6 @@ def news_loop():
 
             for source,url in NEWS_FEEDS.items():
 
-                print("Scanning:",source)
-
                 feed=feedparser.parse(url)
 
                 if not feed.entries:
@@ -233,12 +264,12 @@ def news_loop():
 
                     intel=build_intel(entry,source)
 
-                    img=None
+                    img=extract_image(entry)
+
                     video=None
 
                     if hasattr(entry,"summary"):
 
-                        img=extract_image(entry.summary)
                         video=extract_video(entry.summary)
 
                     if img:
@@ -287,7 +318,9 @@ if __name__=="__main__":
     send_message("全球情报雷达系统启动")
 
     thread=threading.Thread(target=news_loop)
+
     thread.daemon=True
+
     thread.start()
 
     port=int(os.environ.get("PORT",10000))
