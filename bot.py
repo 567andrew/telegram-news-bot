@@ -1,9 +1,7 @@
-from flask import Flask
 import requests
 import os
 import feedparser
 import time
-import threading
 import re
 from bs4 import BeautifulSoup
 from datetime import datetime, UTC
@@ -16,10 +14,9 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-app = Flask(__name__)
 posted = set()
 
-# 🔥 状态控制
+# 控制参数
 FIRST_RUN = True
 AI_LIMIT_PER_ROUND = 3
 
@@ -40,11 +37,11 @@ def clean_html(text):
 
 def fetch_full_article(url):
     try:
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=10)
         soup = BeautifulSoup(r.text, "lxml")
         paragraphs = soup.find_all("p")
         text = " ".join([p.get_text() for p in paragraphs])
-        return re.sub(r'\s+', ' ', text)[:4000]
+        return re.sub(r'\s+', ' ', text)[:5000]
     except:
         return ""
 
@@ -55,7 +52,7 @@ def ai_process(text):
         return None
 
     prompt = f"""
-提取新闻要点：
+请提取新闻核心要素（必须完整）：
 
 时间：
 地点：
@@ -64,20 +61,21 @@ def ai_process(text):
 原因：
 结果：
 
-一句话总结：
+然后写一句总结（不超过20字）
 
-新闻：
-{text[:2500]}
+新闻正文：
+{text[:3000]}
 """
 
     try:
         res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1
+            temperature=0.2
         )
         return res.choices[0].message.content.strip()
-    except:
+    except Exception as e:
+        print("AI错误:", e)
         return None
 
 # ================== fallback ==================
@@ -90,7 +88,7 @@ def translate(text):
             "sl": "auto",
             "tl": "zh",
             "dt": "t",
-            "q": text[:500]
+            "q": text[:800]
         }
         r = requests.get(url, params=params, timeout=5)
         return r.json()[0][0][0]
@@ -98,7 +96,7 @@ def translate(text):
         return text
 
 def fallback_summary(text):
-    return f"【新闻快讯】\n\n{translate(text[:120])}"
+    return f"【新闻快讯】\n\n{translate(text[:200])}"
 
 # ================== 去重 ==================
 
@@ -120,15 +118,18 @@ def send_photo(photo, text):
             files={"photo": requests.get(photo, timeout=5).content},
             timeout=10
         )
-    except:
-        pass
+        print("✅ 已发送")
+    except Exception as e:
+        print("发送失败:", e)
 
-# ================== 单条处理 ==================
+# ================== 处理 ==================
 
 def process_news(entry, source, ai_count):
 
     if is_duplicate(entry.title):
         return ai_count
+
+    print("📰 处理:", entry.title)
 
     raw = getattr(entry, "summary", "")
     full = fetch_full_article(entry.link)
@@ -139,7 +140,6 @@ def process_news(entry, source, ai_count):
     if len(text) < 100:
         return ai_count
 
-    # 🔥 AI控制
     use_ai = (not FIRST_RUN) and ai_count < AI_LIMIT_PER_ROUND
 
     if use_ai:
@@ -171,49 +171,34 @@ def news_loop():
     index = 0
 
     while True:
+        try:
+            ai_count = 0
 
-        ai_count = 0
+            batch = NEWS_FEEDS[index:index+2]
 
-        # 🔥 每轮只处理2个新闻源（关键优化）
-        batch = NEWS_FEEDS[index:index+2]
+            for source, url in batch:
+                print("🌍 来源:", source)
 
-        for source, url in batch:
-            try:
                 feed = feedparser.parse(url)
 
                 for entry in feed.entries[:2]:
                     ai_count = process_news(entry, source, ai_count)
                     time.sleep(1)
 
-            except:
-                continue
+            index = (index + 2) % len(NEWS_FEEDS)
 
-        index = (index + 2) % len(NEWS_FEEDS)
+            FIRST_RUN = False
 
-        FIRST_RUN = False
+            print("⏳ 等待下一轮...")
+            time.sleep(120)
 
-        time.sleep(120)  # 🔥 扫描间隔
-
-# ================== Web ==================
-
-@app.route("/", methods=["GET"])
-def home():
-    return "OK"
+        except Exception as e:
+            print("❌ 主循环错误:", e)
+            time.sleep(10)
 
 # ================== 启动 ==================
 
-def start_news():
-    time.sleep(5)  # 🔥 延迟启动
-    news_loop()
-
 if __name__ == "__main__":
-
-    print("🔥 SYSTEM STARTED")
-
-    t = threading.Thread(target=start_news)
-    t.daemon = True
-    t.start()
-
-    print("🔥 NEWS THREAD STARTED")
-
-    app.run(host="0.0.0.0", port=10000)
+    print("🚀 WORKER STARTED")
+    time.sleep(3)
+    news_loop()
