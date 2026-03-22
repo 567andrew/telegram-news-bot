@@ -24,14 +24,8 @@ NEWS_FEEDS = {
     "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
     "BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
     "CNN":"https://rss.cnn.com/rss/edition.rss",
-    "AP":"https://apnews.com/rss",
     "Guardian":"https://www.theguardian.com/world/rss",
-    "NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
-    "Bloomberg":"https://feeds.bloomberg.com/world/news.rss",
-    "AlJazeera":"https://www.aljazeera.com/xml/rss/all.xml",
-    "DW":"https://rss.dw.com/xml/rss-en-world",
-    "France24":"https://www.france24.com/en/rss",
-    "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html"
+    "NYTimes":"https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
 }
 
 # ================== 工具 ==================
@@ -40,7 +34,6 @@ def clean_html(text):
     soup = BeautifulSoup(text, "lxml")
     return soup.get_text()
 
-# 🔥 强化正文抓取
 def fetch_full_article(url):
     try:
         r = requests.get(url, timeout=10)
@@ -51,7 +44,7 @@ def fetch_full_article(url):
 
         text = re.sub(r'\s+', ' ', text)
 
-        return text[:5000]  # 提高长度
+        return text[:5000]
     except:
         return ""
 
@@ -63,7 +56,7 @@ def ai_process(text):
         return None
 
     prompt = f"""
-你是国际新闻编辑，请从完整新闻中提取核心信息：
+你是国际新闻编辑，请基于新闻正文提取完整信息：
 
 【新闻摘要】
 
@@ -74,16 +67,16 @@ def ai_process(text):
 原因：
 结果：
 
-【一句话总结】：
+一句话总结：
 
 【要求】
-- 中文
+- 只根据正文内容
+- 不参考标题
+- 不编造
+- 简单清晰
 - 每条不超过20字
-- 信息必须完整
-- 不允许残缺句子
-- 如果信息不足请合理补充
 
-新闻全文：
+新闻正文：
 {text[:3000]}
 """
 
@@ -105,7 +98,7 @@ def ai_process(text):
         print("AI错误:", e)
         return None
 
-# ================== 翻译 ==================
+# ================== fallback ==================
 
 def translate(text):
     try:
@@ -121,6 +114,14 @@ def translate(text):
         return r.json()[0][0][0]
     except:
         return text
+
+def fallback_summary(text):
+    short = translate(text[:120])
+    return f"""【新闻快讯】
+
+{short}
+
+（正文摘要）"""
 
 # ================== 去重 ==================
 
@@ -148,8 +149,8 @@ def extract_image(entry):
         pass
     return None
 
-def fallback_image(title):
-    keyword = title.split()[0]
+def fallback_image(text):
+    keyword = text.split()[0]
     return f"https://source.unsplash.com/800x600/?{keyword}"
 
 # ================== 发送 ==================
@@ -176,42 +177,35 @@ def process_news(entry, source):
 
         print("📰 处理:", entry.title)
 
-        raw = entry.title + " " + getattr(entry, "summary", "")
-
+        # 🔥 不用标题，只用正文
+        raw = getattr(entry, "summary", "")
         full = fetch_full_article(entry.link)
 
-        # 🔥 优先完整正文
-        if len(full) > 500:
-            text = full
-        else:
-            text = raw
-
+        text = full if len(full) > 300 else raw
         text = clean_html(text)
-
-        # 🔥 清洗优化
         text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'(.{5,}?)\1+', r'\1', text)
 
-        # 🔥 过滤垃圾
-        if len(text) < 150:
-            print("⚠️ 内容太短跳过")
+        if len(text) < 100:
+            print("⚠️ 正文太短跳过")
             return
 
-        # 🔥 AI调用控制
-        if len(text) < 200:
-            result = None
-        else:
-            result = ai_process(text)
+        # 🔥 AI判断（只对重要新闻）
+        important = any(k in text.lower() for k in [
+            "war","attack","china","us","trump",
+            "russia","iran","israel","election"
+        ])
 
-        # fallback（优化）
+        if important:
+            result = ai_process(text)
+        else:
+            result = None
+
         if not result:
-            print("⚠️ 使用标题fallback")
-            result = "【新闻快讯】\n" + translate(entry.title)
+            result = fallback_summary(text)
 
         date = datetime.now(UTC).strftime("%d %b").lower()
 
-        final_text = f"""
-{result}
+        final_text = f"""{result}
 
 ———
 🌍 {source} · {date}
@@ -219,7 +213,7 @@ def process_news(entry, source):
 
         img = extract_image(entry)
         if not img:
-            img = fallback_image(entry.title)
+            img = fallback_image(text)
 
         send_photo(img, final_text)
 
@@ -239,27 +233,24 @@ def news_loop():
             try:
                 feed = feedparser.parse(url)
 
-                if not feed.entries:
-                    continue
-
                 count = 0
 
                 for entry in feed.entries:
 
-                    if count >= 5:
+                    if count >= 2:  # 限制数量，防卡
                         break
 
                     process_news(entry, source)
                     count += 1
 
-                    time.sleep(1)
+                    time.sleep(2)
 
                 time.sleep(2)
 
             except Exception as e:
                 print("ERROR:", e)
 
-        time.sleep(180)  # 降低扫描频率
+        time.sleep(180)
 
 # ================== Web ==================
 
