@@ -12,13 +12,14 @@ from openai import OpenAI
 # ================== 配置 ==================
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 app = Flask(__name__)
 
 posted = set()
+started = False  # 防止重复启动
 
 NEWS_FEEDS = {
     "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
@@ -49,8 +50,10 @@ def fetch_full_article(url):
     except:
         return ""
 
-# ✅ AI总结
 def ai_process(text):
+
+    if not client:
+        return None
 
     prompt = f"""
 提取新闻核心，用中文输出：
@@ -82,10 +85,10 @@ def ai_process(text):
 
         return output
 
-    except:
+    except Exception as e:
+        print("AI错误:", e)
         return None
 
-# 翻译备用（防止AI失败）
 def translate(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
@@ -101,7 +104,6 @@ def translate(text):
     except:
         return text
 
-# 去重
 def is_duplicate(title):
     key = title.lower()
     if key in posted:
@@ -111,7 +113,6 @@ def is_duplicate(title):
         posted.clear()
     return False
 
-# 图片
 def extract_image(entry):
     try:
         if "media_content" in entry:
@@ -140,40 +141,47 @@ def send_photo(photo, text):
             files={"photo": requests.get(photo, timeout=10).content},
             timeout=15
         )
-    except:
-        pass
+    except Exception as e:
+        print("发送失败:", e)
 
 # ================== 核心 ==================
 
 def process_news(entry, source):
 
-    if is_duplicate(entry.title):
-        return
+    try:
+        if is_duplicate(entry.title):
+            return
 
-    print("📰 处理:", entry.title)
+        print("📰", entry.title)
 
-    raw = entry.title + " " + getattr(entry, "summary", "")
+        raw = entry.title + " " + getattr(entry, "summary", "")
 
-    full = fetch_full_article(entry.link)
-    text = full if len(full) > 200 else raw
+        full = fetch_full_article(entry.link)
+        text = full if len(full) > 200 else raw
 
-    text = clean_html(text)
+        text = clean_html(text)
 
-    result = ai_process(text)
+        result = ai_process(text)
 
-    # ❗关键：防止AI导致0输出
-    if not result:
-        result = translate(text[:500])
+        # 🔥 永远不会空（关键）
+        if not result or len(result) < 20:
+            print("⚠️ fallback")
+            result = translate(text[:500])
 
-    date = datetime.now(UTC).strftime("%d %b").lower()
+        date = datetime.now(UTC).strftime("%d %b").lower()
 
-    final_text = f"{result}\n\n_{source.lower()} · {date}_"
+        final_text = f"{result}\n\n_{source.lower()} · {date}_"
 
-    img = extract_image(entry)
-    if not img:
-        img = fallback_image(entry.title)
+        img = extract_image(entry)
+        if not img:
+            img = fallback_image(entry.title)
 
-    send_photo(img, final_text)
+        send_photo(img, final_text)
+
+        print("✅ 已发送")
+
+    except Exception as e:
+        print("❌ 处理失败:", e)
 
 # ================== 主循环 ==================
 
@@ -186,6 +194,9 @@ def news_loop():
             try:
                 feed = feedparser.parse(url)
 
+                if not feed.entries:
+                    continue
+
                 for entry in feed.entries:
                     process_news(entry, source)
                     time.sleep(1)
@@ -194,6 +205,16 @@ def news_loop():
                 print("ERROR:", e)
 
         time.sleep(60)
+
+# ================== 自动启动 ==================
+
+@app.before_request
+def start_once():
+    global started
+    if not started:
+        started = True
+        print("🚀 启动新闻系统")
+        threading.Thread(target=news_loop, daemon=True).start()
 
 # ================== Web ==================
 
@@ -205,11 +226,5 @@ def catch_all(path):
 # ================== 启动 ==================
 
 if __name__ == "__main__":
-
     print("🔥 SYSTEM STARTED")
-
-    # ✅ 正确线程方式（稳定）
-    threading.Thread(target=news_loop, daemon=True).start()
-
-    # Flask主线程
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
