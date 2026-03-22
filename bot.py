@@ -1,3 +1,4 @@
+```python
 import requests
 import os
 import feedparser
@@ -8,9 +9,18 @@ from datetime import datetime, UTC
 from openai import OpenAI
 
 # ================== 配置 ==================
-TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# ✅ 安全检查（非常关键）
+if not TOKEN:
+    print("❌ BOT_TOKEN 缺失")
+    exit()
+
+if not CHAT_ID:
+    print("❌ CHAT_ID 缺失")
+    exit()
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
@@ -202,3 +212,5 @@ if __name__ == "__main__":
     print("🚀 WORKER STARTED")
     time.sleep(3)
     news_loop()
+```
+
