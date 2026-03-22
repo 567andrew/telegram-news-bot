@@ -50,7 +50,7 @@ def fetch_full_article(url):
     except:
         return ""
 
-# ================== 🔥 AI优化 ==================
+# ================== AI ==================
 
 def ai_process(text):
 
@@ -58,28 +58,25 @@ def ai_process(text):
         return None
 
     prompt = f"""
-你是专业新闻编辑，请提取关键信息：
+请提取新闻核心信息：
 
-【输出格式】
+【输出】
 
-【新闻摘要】
+时间：
+地点：
+人物：
+事件：
+结果：
 
-时间：一句话
-地点：一句话
-人物：一句话
-事件：一句话
-结果：一句话
-
-【一句话总结】：一句话
+一句话总结：
 
 【要求】
 - 中文
-- 每条不超过20字
-- 必须包含5要素
-- 不要废话
+- 每条不超过15字
+- 简洁清晰
 
-新闻内容：
-{text[:1500]}
+新闻：
+{text[:1200]}
 """
 
     try:
@@ -91,20 +88,16 @@ def ai_process(text):
 
         output = res.choices[0].message.content.strip()
 
-        if (
-            not output
-            or "时间：" not in output
-            or "事件：" not in output
-        ):
+        if not output or "事件：" not in output:
             return None
 
-        return output
+        return "【新闻摘要】\n\n" + output
 
     except Exception as e:
         print("AI错误:", e)
         return None
 
-# ================== 翻译兜底 ==================
+# ================== 翻译 ==================
 
 def translate(text):
     try:
@@ -121,6 +114,8 @@ def translate(text):
     except:
         return text
 
+# ================== 去重 ==================
+
 def is_duplicate(title):
     key = title.lower()
     if key in posted:
@@ -129,6 +124,8 @@ def is_duplicate(title):
     if len(posted) > 1000:
         posted.clear()
     return False
+
+# ================== 图片 ==================
 
 def extract_image(entry):
     try:
@@ -177,15 +174,23 @@ def process_news(entry, source):
         text = full if len(full) > 200 else raw
 
         text = clean_html(text)
-        text = text.replace("\n", " ")  # 🔥 提升AI稳定
+        text = text.replace("\n", " ")
 
-        # 🔥 AI处理
-        result = ai_process(text)
+        # 🔥 过滤短内容
+        if len(text) < 100:
+            print("⚠️ 太短跳过")
+            return
 
-        # 🔥 fallback（优化版）
+        # 🔥 AI控制（省钱）
+        if len(text) < 200:
+            result = None
+        else:
+            result = ai_process(text)
+
+        # fallback
         if not result:
-            print("⚠️ AI失败 → 使用翻译")
-            result = "【新闻快讯】\n" + translate(text[:200])
+            print("⚠️ 使用翻译")
+            result = "【新闻快讯】\n" + translate(text[:120])
 
         date = datetime.now(UTC).strftime("%d %b").lower()
 
@@ -221,14 +226,24 @@ def news_loop():
                 if not feed.entries:
                     continue
 
+                count = 0
+
                 for entry in feed.entries:
+
+                    if count >= 5:
+                        break
+
                     process_news(entry, source)
+                    count += 1
+
                     time.sleep(1)
+
+                time.sleep(2)  # 🔥 每个源降速
 
             except Exception as e:
                 print("ERROR:", e)
 
-        time.sleep(60)
+        time.sleep(180)  # 🔥 3分钟扫描一次
 
 # ================== Web ==================
 
@@ -239,11 +254,19 @@ def catch_all(path):
 
 # ================== 启动 ==================
 
+def start_news():
+    while True:
+        try:
+            news_loop()
+        except Exception as e:
+            print("线程崩溃:", e)
+            time.sleep(5)
+
 if __name__ == "__main__":
 
     print("🔥 SYSTEM STARTED")
 
-    t = threading.Thread(target=news_loop)
+    t = threading.Thread(target=start_news)
     t.daemon = True
     t.start()
 
