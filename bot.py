@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 import requests
 import os
 import feedparser
@@ -7,14 +7,18 @@ import threading
 import re
 from bs4 import BeautifulSoup
 from datetime import datetime, UTC
+from openai import OpenAI
 
+# ================== 配置 ==================
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
 
 posted = set()
-posted_titles = []
 
 NEWS_FEEDS = {
     "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
@@ -30,12 +34,62 @@ NEWS_FEEDS = {
     "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html"
 }
 
-# 清理HTML
+# ================== 工具函数 ==================
+
 def clean_html(text):
     soup = BeautifulSoup(text, "lxml")
     return soup.get_text()
 
-# 翻译
+def fetch_full_article(url):
+    try:
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, "lxml")
+        paragraphs = soup.find_all("p")
+        return " ".join([p.get_text() for p in paragraphs])[:3000]
+    except:
+        return ""
+
+# ✅ 真AI总结 + 新闻要素提取
+def ai_process(text):
+
+    prompt = f"""
+你是一个新闻编辑，请提取新闻核心要素并用中文输出：
+
+必须包含：
+- 发生了什么
+- 涉及谁
+- 地点
+- 时间（如果有）
+- 结果/影响
+
+要求：
+- 精简但信息完整
+- 不要评论
+- 不要废话
+- 不少于3条要点
+
+如果内容不是新闻或信息不完整，返回：INVALID
+
+{text[:2000]}
+"""
+
+    try:
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        output = res.choices[0].message.content.strip()
+
+        if "INVALID" in output:
+            return None
+
+        return output
+
+    except:
+        return None
+
+# 翻译（备用）
 def translate(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
@@ -51,227 +105,107 @@ def translate(text):
     except:
         return text
 
-# 新闻过滤（核心）
-def is_valid_news(text):
-
-    text_lower = text.lower()
-
-    # ❌ 问句
-    if "?" in text:
-        return False
-
-    # ❌ 分析/观点类
-    bad_words = ["opinion", "analysis", "why", "how", "should"]
-    if any(w in text_lower for w in bad_words):
-        return False
-
-    # ✅ 必须有事件
-    event_words = [
-        "killed", "attack", "attacked", "launched",
-        "announced", "arrested", "strike", "explosion",
-        "war", "clash", "fire", "crash"
-    ]
-
-    if not any(w in text_lower for w in event_words):
-        return False
-
-    return True
-
-# 抓全文
-def fetch_full_article(url):
-
-    try:
-        r = requests.get(url, timeout=10)
-        soup = BeautifulSoup(r.text, "lxml")
-
-        paragraphs = soup.find_all("p")
-        text = " ".join([p.get_text() for p in paragraphs])
-
-        return text[:3000]
-
-    except:
-        return ""
-
-# 摘要优化
-def ai_summary(text):
-
-    sentences = re.split(r'[。.!?]', text)
-
-    selected = []
-    for s in sentences:
-        s = s.strip()
-        if len(s) > 15:
-            selected.append(s)
-
-    if len(selected) >= 5:
-        selected = selected[:5]
-
-    return "\n".join([f"• {s}" for s in selected])
-
-# 去重
-def similar(title):
-
-    words = set(title.lower().split())
-
-    for old in posted_titles:
-        if len(words & old) >= 4:
-            return True
-
-    posted_titles.append(words)
+# 去重（简化但有效）
+def is_duplicate(title):
+    key = title.lower()
+    if key in posted:
+        return True
+    posted.add(key)
+    if len(posted) > 1000:
+        posted.clear()
     return False
 
-# 提取图片
+# 图片提取
 def extract_image(entry):
-
     try:
         if "media_content" in entry:
-            for m in entry.media_content:
-                if "url" in m:
-                    return m["url"]
+            return entry.media_content[0]["url"]
 
         if hasattr(entry, "summary"):
             img = re.search(r'<img.*?src="(.*?)"', entry.summary)
             if img:
                 return img.group(1)
-
     except:
         pass
-
     return None
 
-# fallback图片（保证一定有图）
 def fallback_image(title):
-
     keyword = title.split()[0]
     return f"https://source.unsplash.com/800x600/?{keyword}"
 
-# 构建内容（核心升级）
-def build_intel(entry, source):
+# ================== 发送 ==================
 
-    raw_text = entry.title + " " + getattr(entry, "summary", "")
+def send_photo(photo, text):
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+        requests.post(
+            url,
+            data={"chat_id": CHAT_ID, "caption": text},
+            files={"photo": requests.get(photo, timeout=10).content},
+            timeout=15
+        )
+    except:
+        pass  # ❗失败直接放弃
 
-    # ❗过滤垃圾新闻
-    if not is_valid_news(raw_text):
-        return None
+# ================== 核心 ==================
 
-    # 抓全文
-    full_text = fetch_full_article(entry.link)
+def process_news(entry, source):
 
-    if len(full_text) > 200:
-        text = full_text
-    else:
-        text = raw_text
+    raw = entry.title + " " + getattr(entry, "summary", "")
+
+    if is_duplicate(entry.title):
+        return
+
+    full = fetch_full_article(entry.link)
+    text = full if len(full) > 200 else raw
 
     text = clean_html(text)
 
-    chinese = translate(text)
+    # AI处理
+    result = ai_process(text)
 
-    chinese = ai_summary(chinese)
+    # ❗过滤无效新闻
+    if not result:
+        return
 
     date = datetime.now(UTC).strftime("%d %b").lower()
 
-    return f"""{chinese}
+    final_text = f"{result}\n\n_{source.lower()} · {date}_"
 
-_{source.lower()} · {date}_"""
+    img = extract_image(entry)
+    if not img:
+        img = fallback_image(entry.title)
 
-# 发送文字
-def send_message(text):
+    send_photo(img, final_text)
 
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+# ================== 主循环 ==================
 
-    requests.post(url, json={
-        "chat_id": CHAT_ID,
-        "text": text
-    })
-
-# 发送图片
-def send_photo(photo, text):
-
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-
-        requests.post(
-            url,
-            data={
-                "chat_id": CHAT_ID,
-                "caption": text
-            },
-            files={
-                "photo": requests.get(photo, timeout=15).content
-            }
-        )
-
-    except:
-        send_message(text)
-
-# 主循环
 def news_loop():
-
-    print("GLOBAL INTEL STARTED")
+    print("SYSTEM STARTED")
 
     while True:
-
-        try:
-
-            for source, url in NEWS_FEEDS.items():
-
+        for source, url in NEWS_FEEDS.items():
+            try:
                 feed = feedparser.parse(url)
+                for entry in feed.entries:
+                    process_news(entry, source)
+                    time.sleep(1)
+            except:
+                continue
 
-                if not feed.entries:
-                    continue
+        time.sleep(60)  # 更实时
 
-                for entry in feed.entries[:6]:
+# ================== Web ==================
 
-                    key = entry.title + entry.link
-
-                    if key in posted:
-                        continue
-
-                    if similar(entry.title):
-                        continue
-
-                    intel = build_intel(entry, source)
-
-                    # ❗过滤后为空
-                    if not intel:
-                        continue
-
-                    img = extract_image(entry)
-
-                    if not img:
-                        img = fallback_image(entry.title)
-
-                    send_photo(img, intel)
-
-                    posted.add(key)
-
-                    if len(posted) > 500:
-                        posted.clear()
-
-                    time.sleep(2)
-
-        except Exception as e:
-            print("ERROR:", e)
-
-        time.sleep(300)
-
-@app.route("/")
+@app.route("/", methods=["GET", "POST", "HEAD"])
 def home():
-    return "Running"
-
-@app.route("/test")
-def test():
-    send_message("系统正常运行")
     return "OK"
+
+# ================== 启动 ==================
 
 if __name__ == "__main__":
 
-    print("SYSTEM STARTED")
-
-    thread = threading.Thread(target=news_loop)
-    thread.daemon = True
-    thread.start()
+    threading.Thread(target=news_loop, daemon=True).start()
 
     port = int(os.environ.get("PORT", 10000))
-
     app.run(host="0.0.0.0", port=port)
