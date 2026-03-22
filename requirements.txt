@@ -1,6 +1,5 @@
-flask
+python-telegram-bot
 requests
-feedparser
-beautifulsoup4
-lxml
 openai
+flask
+schedule
