@@ -50,7 +50,7 @@ def fetch_full_article(url):
     except:
         return ""
 
-# ================== 🔥 AI核心优化 ==================
+# ================== 🔥 AI优化 ==================
 
 def ai_process(text):
 
@@ -58,45 +58,43 @@ def ai_process(text):
         return None
 
     prompt = f"""
-你是专业新闻编辑，请提取核心信息并结构化输出：
-
-【要求】
-1. 必须输出中文
-2. 每条不超过20字
-3. 不要废话
-4. 必须包含5要素
+你是专业新闻编辑，请提取关键信息：
 
 【输出格式】
 
 【新闻摘要】
 
-时间：
-地点：
-人物：
-事件：
-结果：
+时间：一句话
+地点：一句话
+人物：一句话
+事件：一句话
+结果：一句话
 
-【一句话总结】：
+【一句话总结】：一句话
 
-------------------
+【要求】
+- 中文
+- 每条不超过20字
+- 必须包含5要素
+- 不要废话
 
-{text[:2000]}
+新闻内容：
+{text[:1500]}
 """
 
     try:
         res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
+            temperature=0.1
         )
 
         output = res.choices[0].message.content.strip()
 
-        # 🔥 过滤无效内容
         if (
             not output
-            or len(output) < 30
             or "时间：" not in output
+            or "事件：" not in output
         ):
             return None
 
@@ -179,14 +177,15 @@ def process_news(entry, source):
         text = full if len(full) > 200 else raw
 
         text = clean_html(text)
+        text = text.replace("\n", " ")  # 🔥 提升AI稳定
 
         # 🔥 AI处理
         result = ai_process(text)
 
-        # 🔥 AI失败兜底
+        # 🔥 fallback（优化版）
         if not result:
             print("⚠️ AI失败 → 使用翻译")
-            result = translate(text[:300])
+            result = "【新闻快讯】\n" + translate(text[:200])
 
         date = datetime.now(UTC).strftime("%d %b").lower()
 
@@ -244,8 +243,10 @@ if __name__ == "__main__":
 
     print("🔥 SYSTEM STARTED")
 
-    # 启动新闻线程
-    threading.Thread(target=news_loop, daemon=True).start()
+    t = threading.Thread(target=news_loop)
+    t.daemon = True
+    t.start()
 
-    # Render Web服务
+    print("🔥 NEWS THREAD STARTED")
+
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
