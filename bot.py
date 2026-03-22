@@ -50,24 +50,35 @@ def fetch_full_article(url):
     except:
         return ""
 
+# ================== 🔥 AI核心优化 ==================
+
 def ai_process(text):
 
     if not client:
         return None
 
     prompt = f"""
-提取新闻核心，用中文输出：
+你是专业新闻编辑，请提取核心信息并结构化输出：
 
-必须包含：
-- 发生了什么
-- 谁
-- 地点
-- 时间
-- 结果
+【要求】
+1. 必须输出中文
+2. 每条不超过20字
+3. 不要废话
+4. 必须包含5要素
 
-至少3条要点，不要废话。
+【输出格式】
 
-如果不是新闻返回 INVALID
+【新闻摘要】
+
+时间：
+地点：
+人物：
+事件：
+结果：
+
+【一句话总结】：
+
+------------------
 
 {text[:2000]}
 """
@@ -76,11 +87,17 @@ def ai_process(text):
         res = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
         )
 
         output = res.choices[0].message.content.strip()
 
-        if "INVALID" in output:
+        # 🔥 过滤无效内容
+        if (
+            not output
+            or len(output) < 30
+            or "时间：" not in output
+        ):
             return None
 
         return output
@@ -88,6 +105,8 @@ def ai_process(text):
     except Exception as e:
         print("AI错误:", e)
         return None
+
+# ================== 翻译兜底 ==================
 
 def translate(text):
     try:
@@ -161,17 +180,22 @@ def process_news(entry, source):
 
         text = clean_html(text)
 
-        # AI处理
+        # 🔥 AI处理
         result = ai_process(text)
 
-        # ❗关键：永远不会空
-        if not result or len(result) < 20:
-            print("⚠️ fallback")
-            result = translate(text[:500])
+        # 🔥 AI失败兜底
+        if not result:
+            print("⚠️ AI失败 → 使用翻译")
+            result = translate(text[:300])
 
         date = datetime.now(UTC).strftime("%d %b").lower()
 
-        final_text = f"{result}\n\n_{source.lower()} · {date}_"
+        final_text = f"""
+{result}
+
+———
+🌍 {source} · {date}
+"""
 
         img = extract_image(entry)
         if not img:
@@ -220,8 +244,8 @@ if __name__ == "__main__":
 
     print("🔥 SYSTEM STARTED")
 
-    # ✅ 启动新闻线程（关键）
+    # 启动新闻线程
     threading.Thread(target=news_loop, daemon=True).start()
 
-    # ✅ Flask服务（Render必须）
+    # Render Web服务
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
