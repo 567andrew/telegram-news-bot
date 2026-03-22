@@ -17,7 +17,6 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 app = Flask(__name__)
-
 posted = set()
 
 # ================== 新闻源 ==================
@@ -41,12 +40,18 @@ def clean_html(text):
     soup = BeautifulSoup(text, "lxml")
     return soup.get_text()
 
+# 🔥 强化正文抓取
 def fetch_full_article(url):
     try:
         r = requests.get(url, timeout=10)
         soup = BeautifulSoup(r.text, "lxml")
+
         paragraphs = soup.find_all("p")
-        return " ".join([p.get_text() for p in paragraphs])[:3000]
+        text = " ".join([p.get_text() for p in paragraphs])
+
+        text = re.sub(r'\s+', ' ', text)
+
+        return text[:5000]  # 提高长度
     except:
         return ""
 
@@ -58,25 +63,28 @@ def ai_process(text):
         return None
 
     prompt = f"""
-请提取新闻核心信息：
+你是国际新闻编辑，请从完整新闻中提取核心信息：
 
-【输出】
+【新闻摘要】
 
 时间：
 地点：
 人物：
 事件：
+原因：
 结果：
 
-一句话总结：
+【一句话总结】：
 
 【要求】
 - 中文
-- 每条不超过15字
-- 简洁清晰
+- 每条不超过20字
+- 信息必须完整
+- 不允许残缺句子
+- 如果信息不足请合理补充
 
-新闻：
-{text[:1200]}
+新闻全文：
+{text[:3000]}
 """
 
     try:
@@ -91,7 +99,7 @@ def ai_process(text):
         if not output or "事件：" not in output:
             return None
 
-        return "【新闻摘要】\n\n" + output
+        return output
 
     except Exception as e:
         print("AI错误:", e)
@@ -171,26 +179,34 @@ def process_news(entry, source):
         raw = entry.title + " " + getattr(entry, "summary", "")
 
         full = fetch_full_article(entry.link)
-        text = full if len(full) > 200 else raw
+
+        # 🔥 优先完整正文
+        if len(full) > 500:
+            text = full
+        else:
+            text = raw
 
         text = clean_html(text)
-        text = text.replace("\n", " ")
 
-        # 🔥 过滤短内容
-        if len(text) < 100:
-            print("⚠️ 太短跳过")
+        # 🔥 清洗优化
+        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'(.{5,}?)\1+', r'\1', text)
+
+        # 🔥 过滤垃圾
+        if len(text) < 150:
+            print("⚠️ 内容太短跳过")
             return
 
-        # 🔥 AI控制（省钱）
+        # 🔥 AI调用控制
         if len(text) < 200:
             result = None
         else:
             result = ai_process(text)
 
-        # fallback
+        # fallback（优化）
         if not result:
-            print("⚠️ 使用翻译")
-            result = "【新闻快讯】\n" + translate(text[:120])
+            print("⚠️ 使用标题fallback")
+            result = "【新闻快讯】\n" + translate(entry.title)
 
         date = datetime.now(UTC).strftime("%d %b").lower()
 
@@ -238,12 +254,12 @@ def news_loop():
 
                     time.sleep(1)
 
-                time.sleep(2)  # 🔥 每个源降速
+                time.sleep(2)
 
             except Exception as e:
                 print("ERROR:", e)
 
-        time.sleep(180)  # 🔥 3分钟扫描一次
+        time.sleep(180)  # 降低扫描频率
 
 # ================== Web ==================
 
