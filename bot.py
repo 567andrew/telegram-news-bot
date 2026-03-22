@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask
 import requests
 import os
 import feedparser
@@ -34,7 +34,7 @@ NEWS_FEEDS = {
     "CNBC":"https://www.cnbc.com/id/100727362/device/rss/rss.html"
 }
 
-# ================== 工具函数 ==================
+# ================== 工具 ==================
 
 def clean_html(text):
     soup = BeautifulSoup(text, "lxml")
@@ -49,26 +49,22 @@ def fetch_full_article(url):
     except:
         return ""
 
-# ✅ 真AI总结 + 新闻要素提取
+# ✅ AI总结
 def ai_process(text):
 
     prompt = f"""
-你是一个新闻编辑，请提取新闻核心要素并用中文输出：
+提取新闻要素，用中文输出：
 
 必须包含：
 - 发生了什么
-- 涉及谁
+- 谁
 - 地点
 - 时间（如果有）
-- 结果/影响
+- 结果
 
-要求：
-- 精简但信息完整
-- 不要评论
-- 不要废话
-- 不少于3条要点
+至少3条要点，不要废话。
 
-如果内容不是新闻或信息不完整，返回：INVALID
+如果不是新闻或信息不足，返回：INVALID
 
 {text[:2000]}
 """
@@ -89,7 +85,7 @@ def ai_process(text):
     except:
         return None
 
-# 翻译（备用）
+# 翻译备用
 def translate(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
@@ -105,7 +101,7 @@ def translate(text):
     except:
         return text
 
-# 去重（简化但有效）
+# 去重
 def is_duplicate(title):
     key = title.lower()
     if key in posted:
@@ -115,7 +111,7 @@ def is_duplicate(title):
         posted.clear()
     return False
 
-# 图片提取
+# 图片
 def extract_image(entry):
     try:
         if "media_content" in entry:
@@ -145,28 +141,29 @@ def send_photo(photo, text):
             timeout=15
         )
     except:
-        pass  # ❗失败直接放弃
+        pass  # 失败直接放弃
 
 # ================== 核心 ==================
 
 def process_news(entry, source):
 
-    raw = entry.title + " " + getattr(entry, "summary", "")
-
     if is_duplicate(entry.title):
         return
+
+    print("📰 处理:", entry.title)
+
+    raw = entry.title + " " + getattr(entry, "summary", "")
 
     full = fetch_full_article(entry.link)
     text = full if len(full) > 200 else raw
 
     text = clean_html(text)
 
-    # AI处理
     result = ai_process(text)
 
-    # ❗过滤无效新闻
+    # ❗AI失败 fallback（保证一定发送）
     if not result:
-        return
+        result = translate(text[:500])
 
     date = datetime.now(UTC).strftime("%d %b").lower()
 
@@ -181,31 +178,43 @@ def process_news(entry, source):
 # ================== 主循环 ==================
 
 def news_loop():
-    print("SYSTEM STARTED")
+
+    print("🔥 NEWS LOOP STARTED")
 
     while True:
         for source, url in NEWS_FEEDS.items():
             try:
                 feed = feedparser.parse(url)
+
                 for entry in feed.entries:
                     process_news(entry, source)
                     time.sleep(1)
-            except:
-                continue
 
-        time.sleep(60)  # 更实时
+            except Exception as e:
+                print("ERROR:", e)
+
+        time.sleep(60)
 
 # ================== Web ==================
 
-@app.route("/", methods=["GET", "POST", "HEAD"])
-def home():
+@app.route("/", defaults={"path": ""}, methods=["GET", "POST", "HEAD"])
+@app.route("/<path:path>", methods=["GET", "POST", "HEAD"])
+def catch_all(path):
     return "OK"
 
 # ================== 启动 ==================
 
 if __name__ == "__main__":
 
-    threading.Thread(target=news_loop, daemon=True).start()
+    # Flask 放子线程
+    threading.Thread(
+        target=app.run,
+        kwargs={
+            "host": "0.0.0.0",
+            "port": int(os.environ.get("PORT", 10000))
+        },
+        daemon=True
+    ).start()
 
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    # 主线程跑新闻（关键）
+    news_loop()
