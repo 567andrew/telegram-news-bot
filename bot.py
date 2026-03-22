@@ -19,8 +19,8 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 app = Flask(__name__)
 
 posted = set()
-started = False  # 防止重复启动
 
+# ================== 新闻源 ==================
 NEWS_FEEDS = {
     "Reuters":"https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
     "BBC":"http://feeds.bbci.co.uk/news/world/rss.xml",
@@ -62,12 +62,12 @@ def ai_process(text):
 - 发生了什么
 - 谁
 - 地点
-- 时间（如有）
+- 时间
 - 结果
 
-至少3条，不要废话。
+至少3条要点，不要废话。
 
-如果不是新闻返回：INVALID
+如果不是新闻返回 INVALID
 
 {text[:2000]}
 """
@@ -152,7 +152,7 @@ def process_news(entry, source):
         if is_duplicate(entry.title):
             return
 
-        print("📰", entry.title)
+        print("📰 处理:", entry.title)
 
         raw = entry.title + " " + getattr(entry, "summary", "")
 
@@ -161,9 +161,10 @@ def process_news(entry, source):
 
         text = clean_html(text)
 
+        # AI处理
         result = ai_process(text)
 
-        # 🔥 永远不会空（关键）
+        # ❗关键：永远不会空
         if not result or len(result) < 20:
             print("⚠️ fallback")
             result = translate(text[:500])
@@ -206,16 +207,6 @@ def news_loop():
 
         time.sleep(60)
 
-# ================== 自动启动 ==================
-
-@app.before_request
-def start_once():
-    global started
-    if not started:
-        started = True
-        print("🚀 启动新闻系统")
-        threading.Thread(target=news_loop, daemon=True).start()
-
 # ================== Web ==================
 
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST", "HEAD"])
@@ -226,5 +217,11 @@ def catch_all(path):
 # ================== 启动 ==================
 
 if __name__ == "__main__":
+
     print("🔥 SYSTEM STARTED")
+
+    # ✅ 启动新闻线程（关键）
+    threading.Thread(target=news_loop, daemon=True).start()
+
+    # ✅ Flask服务（Render必须）
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
