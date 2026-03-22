@@ -53,18 +53,18 @@ def fetch_full_article(url):
 def ai_process(text):
 
     prompt = f"""
-提取新闻要素，用中文输出：
+提取新闻核心，用中文输出：
 
 必须包含：
 - 发生了什么
 - 谁
 - 地点
-- 时间（如果有）
+- 时间（如有）
 - 结果
 
-至少3条要点，不要废话。
+至少3条，不要废话。
 
-如果不是新闻或信息不足，返回：INVALID
+如果不是新闻返回：INVALID
 
 {text[:2000]}
 """
@@ -85,7 +85,7 @@ def ai_process(text):
     except:
         return None
 
-# 翻译备用
+# 翻译备用（防止AI失败）
 def translate(text):
     try:
         url = "https://translate.googleapis.com/translate_a/single"
@@ -141,7 +141,7 @@ def send_photo(photo, text):
             timeout=15
         )
     except:
-        pass  # 失败直接放弃
+        pass
 
 # ================== 核心 ==================
 
@@ -161,7 +161,7 @@ def process_news(entry, source):
 
     result = ai_process(text)
 
-    # ❗AI失败 fallback（保证一定发送）
+    # ❗关键：防止AI导致0输出
     if not result:
         result = translate(text[:500])
 
@@ -206,15 +206,10 @@ def catch_all(path):
 
 if __name__ == "__main__":
 
-    # Flask 放子线程
-    threading.Thread(
-        target=app.run,
-        kwargs={
-            "host": "0.0.0.0",
-            "port": int(os.environ.get("PORT", 10000))
-        },
-        daemon=True
-    ).start()
+    print("🔥 SYSTEM STARTED")
 
-    # 主线程跑新闻（关键）
-    news_loop()
+    # ✅ 正确线程方式（稳定）
+    threading.Thread(target=news_loop, daemon=True).start()
+
+    # Flask主线程
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
