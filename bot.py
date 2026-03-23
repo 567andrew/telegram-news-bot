@@ -1,7 +1,26 @@
+import requests
+import os
 import time
 
-print("🔥 程序启动成功")
+TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
-while True:
-    print("✅ 正在运行...")
-    time.sleep(5)
+def send_test():
+    print("🚀 bot started")
+
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": "✅ 测试成功！机器人正常工作"
+    }
+
+    r = requests.post(url, data=data)
+    print("📨 status:", r.text)
+
+
+if __name__ == "__main__":
+    send_test()
+
+    while True:
+        print("😴 running...")
+        time.sleep(60)
