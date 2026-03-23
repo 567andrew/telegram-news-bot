@@ -1,10 +1,6 @@
 import requests
 import os
 import time
-import threading
-from flask import Flask
-
-app = Flask(__name__)
 
 TOKEN = os.environ["BOT_TOKEN"]
 CHAT_ID = os.environ["CHAT_ID"]
@@ -18,28 +14,15 @@ def send_message(text):
     }
     requests.post(url, data=data)
 
-# 自动发送（核心）
-def auto_news():
-    print("🔥 自动新闻启动成功")
+# 主程序（核心）
+def main():
+    print("🔥 Bot started")
+
     while True:
-        print("📰 正在发送新闻...")
+        print("📰 Sending news...")
         send_message("📰 自动新闻测试：" + time.strftime("%H:%M:%S"))
         time.sleep(30)
 
-# 🚀 直接启动线程（关键！！）
-threading.Thread(target=auto_news, daemon=True).start()
-
-# 测试接口
-@app.route("/test")
-def test():
-    send_message("✅ 测试成功")
-    return "ok"
-
-# 首页
-@app.route("/")
-def home():
-    return "running"
-
 # 启动
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    main()
