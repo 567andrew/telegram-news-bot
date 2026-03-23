@@ -26,7 +26,7 @@ client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 posted = set()
 
 # 控制参数
-FIRST_RUN = True
+FIRST_RUN = False   # ✅ 直接开启发送
 AI_LIMIT_PER_ROUND = 3
 
 # ================== 新闻源 ==================
@@ -77,12 +77,11 @@ def ai_process(text):
 """
 
     try:
-        res = client.chat.completions.create(
+        res = client.responses.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
+            input=prompt
         )
-        return res.choices[0].message.content.strip()
+        return res.output[0].content[0].text.strip()
     except Exception as e:
         print("AI错误:", e)
         return None
@@ -121,13 +120,18 @@ def is_duplicate(title):
 def send_photo(photo, text):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
+
+        img_data = requests.get(photo, timeout=5).content
+
         requests.post(
             url,
             data={"chat_id": CHAT_ID, "caption": text},
-            files={"photo": requests.get(photo, timeout=5).content},
+            files={"photo": ("news.jpg", img_data)},
             timeout=10
         )
+
         print("✅ 已发送")
+
     except Exception as e:
         print("发送失败:", e)
 
@@ -143,13 +147,15 @@ def process_news(entry, source, ai_count):
     raw = getattr(entry, "summary", "")
     full = fetch_full_article(entry.link)
 
-    text = full if len(full) > 300 else raw
+    # ✅ 放宽条件
+    text = full if len(full) > 200 else raw
     text = clean_html(text)
 
-    if len(text) < 100:
+    # ✅ 放宽过滤
+    if not text or len(text) < 50:
         return ai_count
 
-    use_ai = (not FIRST_RUN) and ai_count < AI_LIMIT_PER_ROUND
+    use_ai = ai_count < AI_LIMIT_PER_ROUND
 
     if use_ai:
         result = ai_process(text)
@@ -164,7 +170,7 @@ def process_news(entry, source, ai_count):
 
     final_text = f"{result}\n\n———\n🌍 {source} · {date}"
 
-    img = f"https://source.unsplash.com/800x600/?news"
+    img = "https://source.unsplash.com/800x600/?breaking-news"
 
     send_photo(img, final_text)
 
@@ -173,8 +179,6 @@ def process_news(entry, source, ai_count):
 # ================== 主循环 ==================
 
 def news_loop():
-    global FIRST_RUN
-
     print("🔥 NEWS LOOP STARTED")
 
     index = 0
@@ -196,8 +200,6 @@ def news_loop():
 
             index = (index + 2) % len(NEWS_FEEDS)
 
-            FIRST_RUN = False
-
             print("⏳ 等待下一轮...")
             time.sleep(120)
 
@@ -211,6 +213,4 @@ if __name__ == "__main__":
     print("🚀 WORKER STARTED")
     time.sleep(3)
     news_loop()
-```
-
 
