@@ -13,13 +13,13 @@ TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# ✅ 安全检查（非常关键）
+# ✅ 防崩溃检查
 if not TOKEN:
-    print("❌ BOT_TOKEN 缺失")
+    print("❌ BOT_TOKEN 未设置")
     exit()
 
 if not CHAT_ID:
-    print("❌ CHAT_ID 缺失")
+    print("❌ CHAT_ID 未设置")
     exit()
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
@@ -213,4 +213,5 @@ if __name__ == "__main__":
     time.sleep(3)
     news_loop()
 ```
+
 
