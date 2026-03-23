@@ -2,4 +2,4 @@ requests
 feedparser
 beautifulsoup4
 lxml
-openai
+openai==1.30.0
