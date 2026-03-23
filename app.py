@@ -20,69 +20,22 @@ def send(text, img):
         data={"chat_id": CHAT_ID, "caption": text, "photo": img}
     )
 
-def ai_process(text):
-    prompt = f"（放上面的prompt）\n\n{text}"
-
-    res = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"user","content":prompt}]
-    )
-
-    content = res.choices[0].message.content
-
-    try:
-        return json.loads(content)
-    except:
-        return None
-
 def main():
-    print("🔥 Professional News Bot Started")
+    print("🔥 Professional News Bot Running")
 
     while True:
+        print("📰 scanning...")
+
         for rss in RSS_LIST:
             feed = feedparser.parse(rss)
 
-            for entry in feed.entries[:5]:
+            for entry in feed.entries[:3]:
                 if entry.link in sent:
-                    continue
-
-                text = entry.title + entry.summary
-
-                data = ai_process(text)
-
-                if not data:
-                    continue
-
-                if (
-                    not data["translation"]
-                    or not data["summary"]
-                    or data["score"] < 6
-                ):
-                    continue
-
-                img = entry.get("media_content", [{}])[0].get("url", "")
-
-                if not img:
                     continue
 
                 sent.add(entry.link)
 
-                msg = f"""
-📰【全球快报】
-
-📍 {data['where']}
-👤 {data['who']}
-📌 {data['what']}
-📊 {data['impact']}
-
-🧠 解读：
-{data['summary']}
-
-📖 翻译：
-{data['translation']}
-"""
-
-                send(msg, img)
+                send("测试新闻：" + entry.title, "")
 
         time.sleep(300)
 
