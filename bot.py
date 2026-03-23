@@ -1,216 +1,23 @@
+import time
 import requests
 import os
-import feedparser
-import time
-import re
-from bs4 import BeautifulSoup
-from datetime import datetime, UTC
-from openai import OpenAI
 
-# ================== 配置 ==================
-TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
-# ✅ 防崩溃检查
-if not TOKEN:
-    print("❌ BOT_TOKEN 未设置")
-    exit()
+def send_test():
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": "机器人运行中..."
+    }
+    requests.post(url, data=data)
 
-if not CHAT_ID:
-    print("❌ CHAT_ID 未设置")
-    exit()
+print("机器人启动成功")
 
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-
-posted = set()
-
-# 控制参数
-FIRST_RUN = False   # ✅ 直接开启发送
-AI_LIMIT_PER_ROUND = 3
-
-# ================== 新闻源 ==================
-NEWS_FEEDS = [
-    ("Reuters","https://www.reutersagency.com/feed/?best-topics=world&post_type=best"),
-    ("BBC","http://feeds.bbci.co.uk/news/world/rss.xml"),
-    ("CNN","https://rss.cnn.com/rss/edition.rss"),
-    ("Guardian","https://www.theguardian.com/world/rss"),
-    ("NYTimes","https://rss.nytimes.com/services/xml/rss/nyt/World.xml")
-]
-
-# ================== 工具 ==================
-
-def clean_html(text):
-    soup = BeautifulSoup(text, "lxml")
-    return soup.get_text()
-
-def fetch_full_article(url):
-    try:
-        r = requests.get(url, timeout=10)
-        soup = BeautifulSoup(r.text, "lxml")
-        paragraphs = soup.find_all("p")
-        text = " ".join([p.get_text() for p in paragraphs])
-        return re.sub(r'\s+', ' ', text)[:5000]
-    except:
-        return ""
-
-# ================== AI ==================
-
-def ai_process(text):
-    if not client:
-        return None
-
-    prompt = f"""
-请提取新闻核心要素（必须完整）：
-
-时间：
-地点：
-人物：
-事件：
-原因：
-结果：
-
-然后写一句总结（不超过20字）
-
-新闻正文：
-{text[:3000]}
-"""
-
-    try:
-        res = client.responses.create(
-            model="gpt-4o-mini",
-            input=prompt
-        )
-        return res.output[0].content[0].text.strip()
-    except Exception as e:
-        print("AI错误:", e)
-        return None
-
-# ================== fallback ==================
-
-def translate(text):
-    try:
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": "auto",
-            "tl": "zh",
-            "dt": "t",
-            "q": text[:800]
-        }
-        r = requests.get(url, params=params, timeout=5)
-        return r.json()[0][0][0]
-    except:
-        return text
-
-def fallback_summary(text):
-    return f"【新闻快讯】\n\n{translate(text[:200])}"
-
-# ================== 去重 ==================
-
-def is_duplicate(title):
-    key = title.lower()
-    if key in posted:
-        return True
-    posted.add(key)
-    return False
-
-# ================== 发送 ==================
-
-def send_photo(photo, text):
-    try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-
-        img_data = requests.get(photo, timeout=5).content
-
-        requests.post(
-            url,
-            data={"chat_id": CHAT_ID, "caption": text},
-            files={"photo": ("news.jpg", img_data)},
-            timeout=10
-        )
-
-        print("✅ 已发送")
-
-    except Exception as e:
-        print("发送失败:", e)
-
-# ================== 处理 ==================
-
-def process_news(entry, source, ai_count):
-
-    if is_duplicate(entry.title):
-        return ai_count
-
-    print("📰 处理:", entry.title)
-
-    raw = getattr(entry, "summary", "")
-    full = fetch_full_article(entry.link)
-
-    # ✅ 放宽条件
-    text = full if len(full) > 200 else raw
-    text = clean_html(text)
-
-    # ✅ 放宽过滤
-    if not text or len(text) < 50:
-        return ai_count
-
-    use_ai = ai_count < AI_LIMIT_PER_ROUND
-
-    if use_ai:
-        result = ai_process(text)
-        ai_count += 1
-    else:
-        result = None
-
-    if not result:
-        result = fallback_summary(text)
-
-    date = datetime.now(UTC).strftime("%d %b").lower()
-
-    final_text = f"{result}\n\n———\n🌍 {source} · {date}"
-
-    img = "https://source.unsplash.com/800x600/?breaking-news"
-
-    send_photo(img, final_text)
-
-    return ai_count
-
-# ================== 主循环 ==================
-
-def news_loop():
-    print("🔥 NEWS LOOP STARTED")
-
-    index = 0
-
-    while True:
-        try:
-            ai_count = 0
-
-            batch = NEWS_FEEDS[index:index+2]
-
-            for source, url in batch:
-                print("🌍 来源:", source)
-
-                feed = feedparser.parse(url)
-
-                for entry in feed.entries[:2]:
-                    ai_count = process_news(entry, source, ai_count)
-                    time.sleep(1)
-
-            index = (index + 2) % len(NEWS_FEEDS)
-
-            print("⏳ 等待下一轮...")
-            time.sleep(120)
-
-        except Exception as e:
-            print("❌ 主循环错误:", e)
-            time.sleep(10)
-
-# ================== 启动 ==================
-
-if __name__ == "__main__":
-    print("🚀 WORKER STARTED")
-    time.sleep(3)
-    news_loop()
+while True:
+    print("发送测试消息...")
+    send_test()
+    print("发送完成，等待60秒")
+    time.sleep(60)
 
