@@ -1,6 +1,4 @@
-Flask
 requests
 feedparser
-beautifulsoup4
-lxml
+openai
 
