@@ -1,37 +1,36 @@
+import os
 import time
+import requests
+import feedparser
 
-print("🔥 第1步：程序启动")
+print("🔥 新闻机器人启动")
 
-try:
-    import os
-    print("✅ 第2步：import os OK")
-except Exception as e:
-    print("❌ os错误:", e)
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 
-try:
-    import requests
-    print("✅ 第3步：requests OK")
-except Exception as e:
-    print("❌ requests错误:", e)
+def send(msg):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
 
-try:
-    import feedparser
-    print("✅ 第4步：feedparser OK")
-except Exception as e:
-    print("❌ feedparser错误:", e)
-
-try:
-    from openai import OpenAI
-    print("✅ 第5步：openai OK")
-except Exception as e:
-    print("❌ openai错误:", e)
-
-print("🚀 开始循环")
+sent_links = set()
 
 while True:
-    try:
-        print("🔄 程序活着")
-    except Exception as e:
-        print("❌ 循环错误:", e)
+    print("🔄 检查新闻")
 
-    time.sleep(5)
+    try:
+        feed = feedparser.parse("https://rss.cnn.com/rss/edition.rss")
+
+        for entry in feed.entries[:3]:
+            if entry.link not in sent_links:
+                send("📰 " + entry.title)
+                sent_links.add(entry.link)
+                print("✅ 已发送:", entry.title)
+                break
+
+    except Exception as e:
+        print("❌ 错误:", e)
+
+    time.sleep(30)
