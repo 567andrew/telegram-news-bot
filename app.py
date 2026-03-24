@@ -12,6 +12,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+# ✅ 全球主流媒体
 RSS_LIST = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "http://rss.cnn.com/rss/edition.rss",
@@ -20,17 +21,19 @@ RSS_LIST = [
     "https://www.theguardian.com/world/rss",
     "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
     "https://time.com/feed/",
+    "https://www.aljazeera.com/xml/rss/all.xml",
+    "https://apnews.com/rss",
+    "https://www.bloomberg.com/feed/podcast/etf-report.xml"
 ]
 
 sent_links = set()
+sent_titles = []
 
 # ✅ 提取图片
 def extract_image(entry):
-    # 优先 media_content
     if "media_content" in entry:
         return entry.media_content[0]["url"]
 
-    # 从 summary 里找 img
     if "summary" in entry:
         imgs = re.findall(r'<img.*?src="(.*?)"', entry.summary)
         if imgs:
@@ -38,9 +41,15 @@ def extract_image(entry):
 
     return None
 
+# ✅ 简单去重（标题相似）
+def is_similar(title):
+    for t in sent_titles:
+        if title[:20] in t or t[:20] in title:
+            return True
+    return False
+
 def send_photo(text, image_url):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-
     try:
         requests.post(url, data={
             "chat_id": CHAT_ID,
@@ -48,12 +57,7 @@ def send_photo(text, image_url):
             "caption": text
         })
     except:
-        # 如果图片发送失败 → fallback成文字
-        send_message(text)
-
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+        pass
 
 def ai_summary(text):
     try:
@@ -62,7 +66,7 @@ def ai_summary(text):
             messages=[
                 {
                     "role": "system",
-                    "content": "提取新闻核心（谁做了什么、发生了什么、结果），用一句中文表达（30-50字）"
+                    "content": "提取新闻核心（谁做了什么、发生了什么、结果），一句话中文总结（30-50字）"
                 },
                 {
                     "role": "user",
@@ -75,43 +79,48 @@ def ai_summary(text):
         return None
 
 def get_source(url):
-    if "bbc" in url:
-        return "BBC"
-    if "cnn" in url:
-        return "CNN"
-    if "nytimes" in url:
-        return "NYT"
-    if "reuters" in url:
-        return "REUTERS"
-    if "guardian" in url:
-        return "GUARDIAN"
-    if "time" in url:
-        return "TIME"
+    if "bbc" in url: return "BBC"
+    if "cnn" in url: return "CNN"
+    if "nytimes" in url: return "NYT"
+    if "reuters" in url: return "REUTERS"
+    if "guardian" in url: return "GUARDIAN"
+    if "time" in url: return "TIME"
+    if "apnews" in url: return "AP"
+    if "aljazeera" in url: return "AJ"
+    if "bloomberg" in url: return "BLOOMBERG"
     return "NEWS"
 
 def run():
-    print("🚀 启动成功")
+    print("🚀 新闻系统启动")
 
     while True:
         try:
             for rss in RSS_LIST:
                 feed = feedparser.parse(rss)
 
-                for entry in feed.entries[:3]:
+                for entry in feed.entries[:5]:
                     link = entry.link
+                    title = entry.title
 
+                    # ✅ 去重
                     if link in sent_links:
                         continue
+                    if is_similar(title):
+                        continue
 
-                    sent_links.add(link)
+                    # ✅ 必须有图
+                    image = extract_image(entry)
+                    if not image:
+                        continue
 
-                    content = entry.title + " " + entry.get("summary", "")
+                    content = title + " " + entry.get("summary", "")
                     summary = ai_summary(content)
 
                     if not summary:
                         continue
 
-                    image = extract_image(entry)
+                    sent_links.add(link)
+                    sent_titles.append(title)
 
                     source = get_source(link)
                     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -120,13 +129,11 @@ def run():
 
 {source} {now}"""
 
-                    # ✅ 有图发图，没有发文字
-                    if image:
-                        send_photo(message, image)
-                    else:
-                        send_message(message)
+                    send_photo(message, image)
 
                     print("✅ 已发送:", summary)
+
+                    time.sleep(5)  # 防封
 
         except Exception as e:
             print("❌ 错误:", e)
