@@ -7,7 +7,11 @@ CHAT_ID = os.environ.get("CHAT_ID")
 
 def send(msg):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+    r = requests.post(url, json={
+        "chat_id": CHAT_ID,
+        "text": msg
+    })
+    print("发送结果:", r.text)
 
 print("🔥 程序启动成功")
 
