@@ -1,4 +1,3 @@
-
 import time
 
 print("🔥 程序启动成功")
