@@ -2,6 +2,7 @@ import requests
 import feedparser
 import time
 import os
+import re
 from datetime import datetime
 from openai import OpenAI
 
@@ -23,6 +24,33 @@ RSS_LIST = [
 
 sent_links = set()
 
+# ✅ 提取图片
+def extract_image(entry):
+    # 优先 media_content
+    if "media_content" in entry:
+        return entry.media_content[0]["url"]
+
+    # 从 summary 里找 img
+    if "summary" in entry:
+        imgs = re.findall(r'<img.*?src="(.*?)"', entry.summary)
+        if imgs:
+            return imgs[0]
+
+    return None
+
+def send_photo(text, image_url):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+
+    try:
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "photo": image_url,
+            "caption": text
+        })
+    except:
+        # 如果图片发送失败 → fallback成文字
+        send_message(text)
+
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": text})
@@ -34,7 +62,7 @@ def ai_summary(text):
             messages=[
                 {
                     "role": "system",
-                    "content": "你是新闻编辑，请提取核心事实（谁、发生什么、结果），用一句简洁中文表达（30-50字），不要翻译标题"
+                    "content": "提取新闻核心（谁做了什么、发生了什么、结果），用一句中文表达（30-50字）"
                 },
                 {
                     "role": "user",
@@ -77,12 +105,13 @@ def run():
 
                     sent_links.add(link)
 
-                    # ✅ 关键：用全文
                     content = entry.title + " " + entry.get("summary", "")
-
                     summary = ai_summary(content)
+
                     if not summary:
                         continue
+
+                    image = extract_image(entry)
 
                     source = get_source(link)
                     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -91,7 +120,11 @@ def run():
 
 {source} {now}"""
 
-                    send_message(message)
+                    # ✅ 有图发图，没有发文字
+                    if image:
+                        send_photo(message, image)
+                    else:
+                        send_message(message)
 
                     print("✅ 已发送:", summary)
 
