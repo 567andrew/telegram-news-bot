@@ -11,7 +11,6 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# 🌍 多新闻源
 RSS_LIST = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "http://rss.cnn.com/rss/edition.rss",
@@ -22,17 +21,11 @@ RSS_LIST = [
     "https://time.com/feed/",
 ]
 
-# 🔥 只做“当前运行去重”
 sent_links = set()
 
-def send_photo(text, image_url):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    data = {
-        "chat_id": CHAT_ID,
-        "photo": image_url,
-        "caption": text
-    }
-    requests.post(url, data=data)
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
 
 def ai_summary(text):
     try:
@@ -41,29 +34,17 @@ def ai_summary(text):
             messages=[
                 {
                     "role": "system",
-                    "content": "提取新闻核心信息，用简洁中文写一段话（40字以内），不要标题，不要解释"
+                    "content": "你是新闻编辑，请提取核心事实（谁、发生什么、结果），用一句简洁中文表达（30-50字），不要翻译标题"
                 },
                 {
                     "role": "user",
-                    "content": text
+                    "content": text[:1000]
                 }
             ]
         )
         return response.choices[0].message.content.strip()
     except:
-        return "（摘要失败）"
-
-def get_image(entry):
-    try:
-        if "media_content" in entry:
-            return entry.media_content[0]["url"]
-        if "links" in entry:
-            for link in entry.links:
-                if link.type.startswith("image"):
-                    return link.href
-    except:
-        pass
-    return None
+        return None
 
 def get_source(url):
     if "bbc" in url:
@@ -73,12 +54,12 @@ def get_source(url):
     if "nytimes" in url:
         return "NYT"
     if "reuters" in url:
-        return "Reuters"
+        return "REUTERS"
     if "guardian" in url:
-        return "Guardian"
+        return "GUARDIAN"
     if "time" in url:
         return "TIME"
-    return "News"
+    return "NEWS"
 
 def run():
     print("🚀 启动成功")
@@ -96,33 +77,28 @@ def run():
 
                     sent_links.add(link)
 
-                    summary = ai_summary(entry.title)
-                    image = get_image(entry)
+                    # ✅ 关键：用全文
+                    content = entry.title + " " + entry.get("summary", "")
+
+                    summary = ai_summary(content)
+                    if not summary:
+                        continue
+
                     source = get_source(link)
                     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-                    message = f"""📰 全球要闻
+                    message = f"""{summary}
 
-{summary}
+{source} {now}"""
 
-来源：{source}
-时间：{now}
-"""
+                    send_message(message)
 
-                    if image:
-                        send_photo(message, image)
-                    else:
-                        requests.post(
-                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-                            data={"chat_id": CHAT_ID, "text": message}
-                        )
-
-                    print("✅ 发送:", summary)
+                    print("✅ 已发送:", summary)
 
         except Exception as e:
             print("❌ 错误:", e)
 
-        time.sleep(600)  # 10分钟
+        time.sleep(600)
 
 if __name__ == "__main__":
     run()
