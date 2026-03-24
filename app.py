@@ -8,21 +8,27 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 
 def send(msg):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": msg
-    })
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": msg
+        }, timeout=10)
+        print("📨 发送成功")
+    except Exception as e:
+        print("❌ 发送失败:", e)
 
-# 只发送一次
 sent = False
 
 while True:
-    print("🔄 程序还活着")
+    try:
+        print("🔄 程序运行中...")
 
-    if not sent:
-        send("✅ 测试成功：Worker正常运行")
-        sent = True
-        print("📨 已发送一次")
+        if not sent:
+            send("✅ Worker稳定运行测试")
+            sent = True
+
+    except Exception as e:
+        print("❌ 主循环错误:", e)
 
     time.sleep(10)
