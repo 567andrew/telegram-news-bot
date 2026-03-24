@@ -1,140 +1,86 @@
-import time
-
-print("🔥 程序启动成功")
-
-while True:
-    print("✅ 循环正在运行")
-    time.sleep(10)import time
-import requests
 import os
+import time
+import requests
 import feedparser
 from openai import OpenAI
 
 # ================== 配置 ==================
-TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+RSS_URL = "https://rss.cnn.com/rss/edition.rss"
+
 sent_links = set()
 
-# ================== 发送 ==================
-def send_photo(text, image_url):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendPhoto"
-    requests.post(url, data={
+# ================== 发送Telegram ==================
+def send_telegram(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
         "chat_id": CHAT_ID,
-        "caption": text[:1000],  # Telegram限制
-        "photo": image_url
-    })
-
-def send_text(text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text[:4000]
-    })
-
-# ================== 获取新闻 ==================
-def get_news():
-    urls = [
-        "https://rss.cnn.com/rss/edition.rss",
-        "https://feeds.bbci.co.uk/news/rss.xml",
-        "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml"
-    ]
-
-    all_news = []
-    for url in urls:
-        feed = feedparser.parse(url)
-        all_news.extend(feed.entries[:3])
-
-    return all_news
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    requests.post(url, data=data)
 
 # ================== AI处理 ==================
-def ai_process(title, summary):
-    text = f"{title}\n{summary}"
-
+def ai_process(text):
     try:
-        res = client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "你是新闻助手，请输出：1.中文总结（3句话）2.英文翻译 3.新闻要素（人物、事件、地点、原因）"
-                },
-                {
-                    "role": "user",
-                    "content": text[:1000]
-                }
+                {"role": "system", "content": "你是新闻助手，翻译并总结成简短中文（50字以内）"},
+                {"role": "user", "content": text}
             ]
         )
-        return res.choices[0].message.content.strip()
-
+        return response.choices[0].message.content.strip()
     except Exception as e:
-        print("❌ AI错误:", e)
-        return "（AI处理失败）"
+        print("AI错误:", e)
+        return None
 
-# ================== 图片提取 ==================
-def get_image(news):
-    if "media_content" in news:
-        return news.media_content[0]["url"]
+# ================== 抓新闻 ==================
+def fetch_news():
+    feed = feedparser.parse(RSS_URL)
+    if not feed.entries:
+        return None
 
-    if "links" in news:
-        for link in news.links:
-            if "image" in link.get("type", ""):
-                return link.href
+    for entry in feed.entries[:5]:
+        if entry.link not in sent_links:
+            return entry
+    return None
 
-    return ""
+# ================== 主循环 ==================
+print("🔥 Worker启动成功")
 
-# ================== 主程序 ==================
-def main():
-    print("🔥 Bot started")
+while True:
+    try:
+        print("🔄 正在检查新闻...")
 
-    while True:
-        try:
-            print("📡 checking news...")
+        news = fetch_news()
 
-            news_list = get_news()
+        if news:
+            print("📰 找到新闻:", news.title)
 
-            for news in news_list:
-                title = news.title
-                link = news.link
-                summary = news.get("summary", "")
+            content = news.title + "\n" + news.summary
 
-                if link in sent_links:
-                    continue
+            ai_text = ai_process(content)
 
-                print("👉 处理:", title)
+            if ai_text:
+                message = f"<b>{news.title}</b>\n\n{ai_text}\n\n<a href='{news.link}'>查看原文</a>"
+                send_telegram(message)
 
-                ai_text = ai_process(title, summary)
-
-                image_url = get_image(news)
-
-                final_text = f"""📰 {title}
-
-🤖 AI内容：
-{ai_text}
-
-🔗 阅读原文：
-{link}
-"""
-
-                if image_url:
-                    send_photo(final_text, image_url)
-                else:
-                    send_text(final_text)
+                sent_links.add(news.link)
 
                 print("✅ 已发送")
+            else:
+                print("❌ AI处理失败")
 
-                sent_links.add(link)
+        else:
+            print("⏳ 没有新新闻")
 
-                time.sleep(5)
+    except Exception as e:
+        print("主循环错误:", e)
 
-            time.sleep(60)
-
-        except Exception as e:
-            print("❌ 主循环错误:", e)
-            time.sleep(10)
-
-if __name__ == "__main__":
-    main()
+    time.sleep(30)
