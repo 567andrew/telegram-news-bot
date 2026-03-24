@@ -2,9 +2,8 @@ import requests
 import feedparser
 import time
 import os
+from datetime import datetime
 from openai import OpenAI
-
-print("🔥 程序启动")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -12,59 +11,118 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-RSS_URL = "http://feeds.bbci.co.uk/news/rss.xml"
+# 🌍 多新闻源
+RSS_LIST = [
+    "http://feeds.bbci.co.uk/news/rss.xml",
+    "http://rss.cnn.com/rss/edition.rss",
+    "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
+    "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+    "https://www.theguardian.com/world/rss",
+    "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
+    "https://time.com/feed/",
+]
 
-def send_telegram(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+# 🔥 只做“当前运行去重”
+sent_links = set()
+
+def send_photo(text, image_url):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     data = {
         "chat_id": CHAT_ID,
-        "text": text
+        "photo": image_url,
+        "caption": text
     }
     requests.post(url, data=data)
 
-def ai_process(text):
+def ai_summary(text):
     try:
         response = client.chat.completions.create(
             model="gpt-5-mini",
             messages=[
-                {"role": "system", "content": "你是新闻助手"},
-                {"role": "user", "content": f"总结并翻译这条新闻成中文：{text}"}
+                {
+                    "role": "system",
+                    "content": "提取新闻核心信息，用简洁中文写一段话（40字以内），不要标题，不要解释"
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
             ]
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        print("AI错误:", e)
-        return "（AI总结失败）"
+        return response.choices[0].message.content.strip()
+    except:
+        return "（摘要失败）"
+
+def get_image(entry):
+    try:
+        if "media_content" in entry:
+            return entry.media_content[0]["url"]
+        if "links" in entry:
+            for link in entry.links:
+                if link.type.startswith("image"):
+                    return link.href
+    except:
+        pass
+    return None
+
+def get_source(url):
+    if "bbc" in url:
+        return "BBC"
+    if "cnn" in url:
+        return "CNN"
+    if "nytimes" in url:
+        return "NYT"
+    if "reuters" in url:
+        return "Reuters"
+    if "guardian" in url:
+        return "Guardian"
+    if "time" in url:
+        return "TIME"
+    return "News"
 
 def run():
-    print("🚀 开始运行")
+    print("🚀 启动成功")
 
     while True:
         try:
-            print("📡 获取新闻...")
-            feed = feedparser.parse(RSS_URL)
+            for rss in RSS_LIST:
+                feed = feedparser.parse(rss)
 
-            for entry in feed.entries[:2]:
-                title = entry.title
-                link = entry.link
+                for entry in feed.entries[:3]:
+                    link = entry.link
 
-                ai_text = ai_process(title)
+                    if link in sent_links:
+                        continue
 
-                message = f"""📰 {title}
+                    sent_links.add(link)
 
-🌐 {link}
+                    summary = ai_summary(entry.title)
+                    image = get_image(entry)
+                    source = get_source(link)
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-🤖 AI总结：
-{ai_text}
+                    message = f"""📰 全球要闻
+
+{summary}
+
+来源：{source}
+时间：{now}
 """
 
-                send_telegram(message)
-                print("✅ 已发送:", title)
+                    if image:
+                        send_photo(message, image)
+                    else:
+                        requests.post(
+                            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                            data={"chat_id": CHAT_ID, "text": message}
+                        )
+
+                    print("✅ 发送:", summary)
 
         except Exception as e:
             print("❌ 错误:", e)
 
-        time.sleep(120)
+        time.sleep(600)  # 10分钟
 
 if __name__ == "__main__":
     run()
