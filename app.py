@@ -1,15 +1,13 @@
-import os
+def run():
+    print("🚀 开始运行")
 
-print("🔥 程序启动了")
+    while True:
+        try:
+            print("🔄 循环中...")
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+            # 你的逻辑
 
-print("BOT_TOKEN:", BOT_TOKEN)
-print("CHAT_ID:", CHAT_ID)
-print("OPENAI:", OPENAI_API_KEY)
+        except Exception as e:
+            print("❌ 捕获错误:", e)
 
-if not BOT_TOKEN:
-    print("❌ BOT_TOKEN 没设置")
-    exit()
+        time.sleep(30)
