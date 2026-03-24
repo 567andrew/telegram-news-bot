@@ -1,7 +1,7 @@
 import time
 
-print("🔥 ANDREW TEST V3")
+print("🔥 ANDREW FINAL TEST")
 
 while True:
-    print("🔄 RUNNING...")
+    print("🔄 RUNNING OK")
     time.sleep(3)
