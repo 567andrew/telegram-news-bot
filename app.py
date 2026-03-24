@@ -1,7 +1,21 @@
 import time
+import requests
+import os
 
-print("🔥 ANDREW FINAL TEST")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
+
+def send(msg):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+
+print("🔥 程序启动成功")
 
 while True:
-    print("🔄 RUNNING OK")
-    time.sleep(3)
+    try:
+        print("🔄 正在运行...")
+        send("✅ Worker 正常运行")
+    except Exception as e:
+        print("❌ 错误:", e)
+
+    time.sleep(60)
