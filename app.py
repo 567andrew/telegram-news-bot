@@ -1,4 +1,11 @@
+
 import time
+
+print("🔥 程序启动成功")
+
+while True:
+    print("✅ 循环正在运行")
+    time.sleep(10)import time
 import requests
 import os
 import feedparser
