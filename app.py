@@ -40,10 +40,10 @@ def extract_image(entry):
 
     return None
 
-# 🔁 标题去重
+# 🔁 标题去重（只对比最近20条）
 def is_similar(title):
-    for t in sent_titles:
-        if title[:25] in t or t[:25] in title:
+    for t in sent_titles[-20:]:
+        if title[:15] in t or t[:15] in title:
             return True
     return False
 
@@ -57,9 +57,14 @@ def send_photo(text, image_url):
             "caption": text
         })
     except:
-        pass
+        send_message(text)
 
-# 🧠 AI新闻快讯（核心🔥）
+# 📤 发送文字
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+
+# 🧠 AI新闻快讯
 def ai_summary(text):
     try:
         response = client.chat.completions.create(
@@ -95,7 +100,7 @@ def ai_summary(text):
     except:
         return None
 
-# 🏷️ 来源
+# 🏷️ 来源识别
 def get_source(url):
     if "bbc" in url: return "BBC"
     if "cnn" in url: return "CNN"
@@ -126,24 +131,18 @@ def run():
                     if is_similar(title):
                         continue
 
-                    # 🖼️ 必须有图
-                    image = extract_image(entry)
-                    if not image:
-                        continue
-
                     content = title + " " + entry.get("summary", "")
                     summary = ai_summary(content)
 
                     if not summary:
                         continue
 
-                    # ❌ 质量过滤
+                    # ❌ 太短不要
                     if len(summary) < 20:
                         continue
 
-                    keywords = ["表示", "称", "宣布", "指出", "批评", "回应", "发生", "引发"]
-                    if not any(k in summary for k in keywords):
-                        continue
+                    # 🖼️ 图片（可有可无）
+                    image = extract_image(entry)
 
                     # ✅ 记录
                     sent_links.add(link)
@@ -156,16 +155,20 @@ def run():
 
 {source} {now}"""
 
-                    send_photo(message, image)
+                    # ✅ 有图优先
+                    if image:
+                        send_photo(message, image)
+                    else:
+                        send_message(message)
 
                     print("✅ 已发送:", summary)
 
-                    time.sleep(5)  # 防封
+                    time.sleep(5)
 
         except Exception as e:
             print("❌ 错误:", e)
 
-        time.sleep(600)  # 每10分钟抓一次
+        time.sleep(600)
 
 
 if __name__ == "__main__":
