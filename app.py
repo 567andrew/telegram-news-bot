@@ -12,7 +12,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# ✅ 全球主流媒体
+# 🌍 全球主流媒体
 RSS_LIST = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "http://rss.cnn.com/rss/edition.rss",
@@ -23,13 +23,12 @@ RSS_LIST = [
     "https://time.com/feed/",
     "https://www.aljazeera.com/xml/rss/all.xml",
     "https://apnews.com/rss",
-    "https://www.bloomberg.com/feed/podcast/etf-report.xml"
 ]
 
 sent_links = set()
 sent_titles = []
 
-# ✅ 提取图片
+# 🖼️ 提取图片
 def extract_image(entry):
     if "media_content" in entry:
         return entry.media_content[0]["url"]
@@ -41,13 +40,14 @@ def extract_image(entry):
 
     return None
 
-# ✅ 简单去重（标题相似）
+# 🔁 标题去重
 def is_similar(title):
     for t in sent_titles:
-        if title[:20] in t or t[:20] in title:
+        if title[:25] in t or t[:25] in title:
             return True
     return False
 
+# 📤 发送图片
 def send_photo(text, image_url):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     try:
@@ -59,6 +59,7 @@ def send_photo(text, image_url):
     except:
         pass
 
+# 🧠 AI新闻快讯（核心🔥）
 def ai_summary(text):
     try:
         response = client.chat.completions.create(
@@ -66,18 +67,35 @@ def ai_summary(text):
             messages=[
                 {
                     "role": "system",
-                    "content": "提取新闻核心（谁做了什么、发生了什么、结果），一句话中文总结（30-50字）"
+                    "content": (
+                        "你是专业新闻编辑，请写一条新闻快讯："
+                        "必须包含【地点 + 人物 + 事件 + 结果】，"
+                        "如果没有明确地点，请根据内容推测国家或地区，"
+                        "用一句中文表达（30-60字），"
+                        "语言像媒体报道，不要分点，不要解释"
+                    )
                 },
                 {
                     "role": "user",
-                    "content": text[:1000]
+                    "content": text[:1200]
                 }
             ]
         )
-        return response.choices[0].message.content.strip()
+
+        result = response.choices[0].message.content.strip()
+
+        # ❌ 过滤AI痕迹
+        bad_words = ["谁", "什么", "总结", "分析", "AI", "："]
+        for w in bad_words:
+            if w in result[:10]:
+                return None
+
+        return result[:80]
+
     except:
         return None
 
+# 🏷️ 来源
 def get_source(url):
     if "bbc" in url: return "BBC"
     if "cnn" in url: return "CNN"
@@ -87,9 +105,9 @@ def get_source(url):
     if "time" in url: return "TIME"
     if "apnews" in url: return "AP"
     if "aljazeera" in url: return "AJ"
-    if "bloomberg" in url: return "BLOOMBERG"
     return "NEWS"
 
+# 🚀 主程序
 def run():
     print("🚀 新闻系统启动")
 
@@ -102,13 +120,13 @@ def run():
                     link = entry.link
                     title = entry.title
 
-                    # ✅ 去重
+                    # 🔁 去重
                     if link in sent_links:
                         continue
                     if is_similar(title):
                         continue
 
-                    # ✅ 必须有图
+                    # 🖼️ 必须有图
                     image = extract_image(entry)
                     if not image:
                         continue
@@ -119,6 +137,15 @@ def run():
                     if not summary:
                         continue
 
+                    # ❌ 质量过滤
+                    if len(summary) < 20:
+                        continue
+
+                    keywords = ["表示", "称", "宣布", "指出", "批评", "回应", "发生", "引发"]
+                    if not any(k in summary for k in keywords):
+                        continue
+
+                    # ✅ 记录
                     sent_links.add(link)
                     sent_titles.append(title)
 
@@ -138,7 +165,8 @@ def run():
         except Exception as e:
             print("❌ 错误:", e)
 
-        time.sleep(600)
+        time.sleep(600)  # 每10分钟抓一次
+
 
 if __name__ == "__main__":
     run()
