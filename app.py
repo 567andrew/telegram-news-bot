@@ -4,6 +4,7 @@ import time
 import os
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from openai import OpenAI
 from pytrends.request import TrendReq
 
@@ -13,7 +14,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# 🌍 15家媒体
+# 🌍 新闻源
 RSS_LIST = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "http://rss.cnn.com/rss/edition.rss",
@@ -31,7 +32,64 @@ RSS_LIST = [
     "https://www.economist.com/latest/rss.xml"
 ]
 
-# 🖼️ 提取图片
+# ✅ 全局缓存（当天有效）
+sent_links = set()
+sent_titles = []
+sent_summaries = []
+last_reset_day = ""
+last_hot_day = ""
+
+# 🧹 每天清空
+def check_reset():
+    global sent_links, sent_titles, sent_summaries, last_reset_day
+
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    today = now.strftime("%Y-%m-%d")
+
+    if last_reset_day != today:
+        sent_links.clear()
+        sent_titles.clear()
+        sent_summaries.clear()
+        last_reset_day = today
+        print("🧹 已清空昨日数据")
+
+# 🕗 热点时间
+def check_hot_time():
+    global last_hot_day
+
+    now = datetime.now(ZoneInfo("America/Los_Angeles"))
+    if now.strftime("%H") == "20" and last_hot_day != now.strftime("%Y-%m-%d"):
+        last_hot_day = now.strftime("%Y-%m-%d")
+        return True
+    return False
+
+# 🔥 趋势
+def get_trending_topics():
+    try:
+        pytrends = TrendReq(hl='en-US', tz=360)
+        df = pytrends.trending_searches(pn='worldwide')
+        return df[0].tolist()[:15]
+    except:
+        return []
+
+# 🔥 热点榜
+def build_hot_list(trends, news_titles):
+    try:
+        text = "趋势:\n" + "\n".join(trends)
+        text += "\n\n新闻:\n" + "\n".join(news_titles[:30])
+
+        response = client.chat.completions.create(
+            model="gpt-5-mini",
+            messages=[
+                {"role": "system", "content": "整理全球Top10热点，每条一句中文（20-40字）"},
+                {"role": "user", "content": text[:2000]}
+            ]
+        )
+        return response.choices[0].message.content.strip()
+    except:
+        return None
+
+# 🖼️ 图片
 def extract_image(entry):
     if "media_content" in entry:
         return entry.media_content[0]["url"]
@@ -43,33 +101,36 @@ def extract_image(entry):
 
     return None
 
-# 🌐 AI补图
 def search_image(query):
     return f"https://source.unsplash.com/800x600/?{query}"
 
-# 🧠 AI新闻快讯
+# 🧠 AI新闻
 def ai_summary(text):
     try:
         response = client.chat.completions.create(
             model="gpt-5-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是专业新闻编辑，请写一条新闻快讯："
-                        "必须包含【地点+人物+事件+结果】，"
-                        "翻译为中文，一句话30-60字，不要解释"
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": text[:1200]
-                }
+                {"role": "system", "content": "写新闻快讯（地点+人物+事件+结果），中文一句话"},
+                {"role": "user", "content": text[:1200]}
             ]
         )
         return response.choices[0].message.content.strip()[:80]
     except:
         return None
+
+# 🔁 标题去重
+def is_similar_title(title):
+    for t in sent_titles[-30:]:
+        if title[:20] in t or t[:20] in title:
+            return True
+    return False
+
+# 🔥 内容去重（核心）
+def is_duplicate_summary(summary):
+    for s in sent_summaries[-30:]:
+        if summary[:25] in s or s[:25] in summary:
+            return True
+    return False
 
 # 📤 发送
 def send_photo(text, image_url):
@@ -101,69 +162,20 @@ def get_source(url):
     if "economist" in url: return "ECONOMIST"
     return "NEWS"
 
-# 🔥 全球趋势
-def get_trending_topics():
-    try:
-        pytrends = TrendReq(hl='en-US', tz=360)
-        df = pytrends.trending_searches(pn='worldwide')
-        return df[0].tolist()[:15]
-    except:
-        return []
-
-# 🔥 AI热点榜
-def build_hot_list(trends, news_titles):
-    try:
-        text = "趋势:\n" + "\n".join(trends)
-        text += "\n\n新闻:\n" + "\n".join(news_titles[:20])
-
-        response = client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "整理全球最重要的10个热点，"
-                        "合并重复，每条一句中文（20-40字），按重要性排序"
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": text[:2000]
-                }
-            ]
-        )
-
-        return response.choices[0].message.content.strip()
-    except:
-        return None
-
-# 🕗 定时
-last_hot_day = ""
-
-def check_hot_time():
-    global last_hot_day
-    now = datetime.now()
-    if now.strftime("%H") == "20" and last_hot_day != now.strftime("%Y-%m-%d"):
-        last_hot_day = now.strftime("%Y-%m-%d")
-        return True
-    return False
-
 # 🚀 主程序
 def run():
-    print("🚀 全球新闻系统启动")
+    print("🚀 系统启动")
 
     while True:
-        sent = set()
-        news_titles = []
+        check_reset()
 
         try:
             # 🔥 热点榜
             if check_hot_time():
                 trends = get_trending_topics()
-                hot = build_hot_list(trends, news_titles)
+                hot = build_hot_list(trends, sent_titles)
                 if hot:
                     send_message(f"🌍 今日全球热点 Top10\n\n{hot}")
-                    print("🔥 热点已发送")
 
             for rss in RSS_LIST:
                 feed = feedparser.parse(rss)
@@ -172,10 +184,10 @@ def run():
                     link = entry.link
                     title = entry.title
 
-                    if link in sent:
+                    if link in sent_links:
                         continue
-
-                    news_titles.append(title)
+                    if is_similar_title(title):
+                        continue
 
                     content = title + " " + entry.get("summary", "")
                     summary = ai_summary(content)
@@ -183,18 +195,26 @@ def run():
                     if not summary or len(summary) < 20:
                         continue
 
+                    # 🔥 内容去重
+                    if is_duplicate_summary(summary):
+                        print("⚠️ 重复内容跳过")
+                        continue
+
                     image = extract_image(entry)
                     if not image:
                         image = search_image(title)
 
                     source = get_source(link)
-                    date = datetime.now().strftime("%Y-%m-%d")
+                    date = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
 
                     message = f"{summary}\n\n{source} {date}"
 
                     send_photo(message, image)
 
-                    sent.add(link)
+                    # ✅ 记录
+                    sent_links.add(link)
+                    sent_titles.append(title)
+                    sent_summaries.append(summary)
 
                     print("✅ 已发送:", summary)
 
@@ -204,7 +224,6 @@ def run():
             print("❌ 错误:", e)
 
         time.sleep(600)
-
 
 if __name__ == "__main__":
     run()
