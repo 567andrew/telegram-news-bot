@@ -1,3 +1,4 @@
+print("🔥🔥🔥 Andrew测试：代码已生效")
 print("🔥 Andrew全球简报系统启动")
 import requests
 import feedparser
