@@ -3,30 +3,25 @@ import feedparser
 import time
 import os
 from datetime import datetime
-import openai
+from openai import OpenAI
 
 # ===== 启动标志 =====
-print("🔥 Andrew系统已启动")
+print("🔥 Andrew全球简报系统启动")
 
-# ===== 初始化（防崩溃）=====
+# ===== 环境变量 =====
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+# ===== OpenAI 初始化（加保护）=====
 try:
-    BOT_TOKEN = os.environ.get("BOT_TOKEN")
-    CHAT_ID = os.environ.get("CHAT_ID")
-    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-    if not BOT_TOKEN or not CHAT_ID or not OPENAI_API_KEY:
-        print("❌ 环境变量缺失")
-        exit()
-
-    print("✅ 环境变量正常")
-
-    openai.api_key = OPENAI_API_KEY
-
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    print("✅ OpenAI 初始化成功")
 except Exception as e:
-    print("❌ 初始化失败:", e)
-    exit()
+    print("❌ OpenAI 初始化失败:", e)
+    client = None
 
-# ===== 信息源 =====
+# ===== RSS源（稳定）=====
 RSS_LIST = [
     "http://feeds.reuters.com/reuters/topNews",
     "http://feeds.bbci.co.uk/news/world/rss.xml",
@@ -52,8 +47,11 @@ def check_reset():
         last_reset_day = today
         print("🧹 已清空缓存")
 
-# ===== AI简报 =====
+# ===== AI生成 =====
 def generate_briefing(title, summary):
+    if not client:
+        return None
+
     prompt = f"""
 你是顶级智库编辑，请写中文深度简报：
 
@@ -82,11 +80,19 @@ def generate_briefing(title, summary):
 """
 
     try:
-        response = openai.ChatCompletion.create(
+        print("🧠 正在生成AI简报...")
+
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        return response["choices"][0]["message"]["content"].strip()
+
+        result = response.choices[0].message.content.strip()
+
+        print("📄 简报长度:", len(result))
+
+        return result
+
     except Exception as e:
         print("❌ AI错误:", e)
         return None
@@ -95,10 +101,12 @@ def generate_briefing(title, summary):
 def get_image(title):
     return f"https://source.unsplash.com/800x600/?{title}"
 
-# ===== 发送 =====
+# ===== Telegram发送 =====
 def send_photo(text, image_url):
     try:
-        requests.post(
+        print("📤 正在发送消息...")
+
+        res = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
             data={
                 "chat_id": CHAT_ID,
@@ -106,36 +114,46 @@ def send_photo(text, image_url):
                 "caption": text[:1000]
             }
         )
+
+        print("📡 Telegram返回:", res.text)
+
     except Exception as e:
         print("❌ 发送失败:", e)
 
 # ===== 主程序 =====
 def run():
-    print("🚀 单条简报系统启动")
+    print("🚀 简报系统开始运行")
 
     while True:
         check_reset()
 
         try:
             for rss in RSS_LIST:
+                print(f"\n🌐 正在抓取: {rss}")
+
                 feed = feedparser.parse(rss)
+
+                print("📦 抓到条数:", len(feed.entries))
 
                 for entry in feed.entries[:5]:
                     link = entry.link
                     title = entry.title
                     summary = entry.get("summary", "")
 
-                    if link in sent_links:
-                        continue
+                    print("➡️ 标题:", title)
 
-                    print("📰 处理:", title)
+                    # ===== 去重（链接）=====
+                    if link in sent_links:
+                        print("⚠️ 链接重复，跳过")
+                        continue
 
                     briefing = generate_briefing(title, summary)
 
                     if not briefing or len(briefing) < 80:
+                        print("⚠️ AI内容无效，跳过")
                         continue
 
-                    # 内容去重
+                    # ===== 内容去重 =====
                     duplicate = False
                     for b in sent_briefings[-20:]:
                         if briefing[:60] in b:
@@ -143,7 +161,7 @@ def run():
                             break
 
                     if duplicate:
-                        print("⚠️ 重复跳过")
+                        print("⚠️ 内容重复，跳过")
                         continue
 
                     image = get_image(title)
@@ -157,14 +175,16 @@ def run():
                     sent_links.add(link)
                     sent_briefings.append(briefing)
 
-                    print("✅ 已发送")
+                    print("✅ 已发送成功")
 
                     time.sleep(10)
 
         except Exception as e:
             print("❌ 主循环错误:", e)
 
+        print("⏳ 等待10分钟...")
         time.sleep(600)
+
 
 # ===== 启动 =====
 if __name__ == "__main__":
