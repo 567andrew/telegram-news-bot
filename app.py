@@ -2,9 +2,8 @@ import requests
 import feedparser
 import time
 import os
-import re
 from datetime import datetime
-from openai import OpenAI
+import openai
 
 # ===== 启动标志 =====
 print("🔥 Andrew系统已启动")
@@ -21,7 +20,7 @@ try:
 
     print("✅ 环境变量正常")
 
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    openai.api_key = OPENAI_API_KEY
 
 except Exception as e:
     print("❌ 初始化失败:", e)
@@ -83,11 +82,11 @@ def generate_briefing(title, summary):
 """
 
     try:
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.choices[0].message.content.strip()
+        return response["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print("❌ AI错误:", e)
         return None
