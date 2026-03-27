@@ -1,3 +1,4 @@
+print("🔥 Andrew全球简报系统启动")
 import requests
 import feedparser
 import time
