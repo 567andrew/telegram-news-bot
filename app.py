@@ -1,4 +1,4 @@
-print("🔥🔥🔥 NEW VERSION LOADED 🔥🔥🔥")
+print("🔥🔥🔥 VERSION 999 🔥🔥🔥")
 import requests
 import feedparser
 import time
