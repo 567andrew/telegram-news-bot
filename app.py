@@ -5,32 +5,34 @@ import os
 from datetime import datetime
 from openai import OpenAI
 
-print("🔥 快速版智库系统启动")
+print("🔥 Andrew系统启动成功")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# ===== OpenAI =====
-try:
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    print("✅ OpenAI OK")
-except Exception as e:
-    print("❌ OpenAI失败:", e)
-    client = None
+# ===== 初始化 =====
+client = None
+if OPENAI_API_KEY:
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        print("✅ OpenAI OK")
+    except:
+        print("❌ OpenAI 初始化失败")
 
-# ===== 稳定RSS =====
+# ===== RSS =====
 RSS_LIST = [
-    "https://feeds.bbci.co.uk/news/world/rss.xml",
-    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    "https://feeds.bbci.co.uk/news/world/rss.xml"
 ]
 
 sent_links = set()
 
-# ===== AI（只处理重要内容）=====
+# ===== AI智库生成 =====
 def generate_briefing(title, summary):
+
     if not client:
-        return title, summary[:200]
+        return f"【简报】{title}"
 
     try:
         print("🤖 AI处理中...")
@@ -39,57 +41,70 @@ def generate_briefing(title, summary):
             model="gpt-4o-mini",
             messages=[{
                 "role": "user",
-                "content": f"用中文总结并给出简短分析：{title}\n{summary}"
-            }],
-            timeout=15
+                "content": f"""
+你是全球顶级智库分析师，请把新闻整理成中文简报：
+
+要求：
+1. 中文标题（有判断）
+2. 3句话总结（有逻辑）
+3. 不要逐句翻译
+
+新闻：
+标题：{title}
+内容：{summary}
+"""
+            }]
         )
 
-        content = response.choices[0].message.content.strip()
-
-        return title, content
+        return response.choices[0].message.content.strip()
 
     except Exception as e:
         print("❌ AI失败:", e)
-        return title, summary[:200]
 
-# ===== Telegram =====
-def send(text):
+        # 👉 保底中文（绝对不再发纯英文）
+        return f"【简报】{title}"
+
+# ===== 发送 =====
+def send(text, source):
     try:
+        final_text = f"""
+🧠 世界智库简报
+
+{text}
+
+—— 来源：{source}
+—— 时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-        r = requests.post(
-            url,
-            data={
-                "chat_id": CHAT_ID,
-                "text": text[:1000]
-            },
-            timeout=10
-        )
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": final_text[:4000]
+        }, timeout=10)
 
-        print("📡 返回:", r.text)
+        print("✅ 已发送")
 
     except Exception as e:
         print("❌ 发送失败:", e)
 
-# ===== 主程序 =====
+# ===== 主循环 =====
 def run():
-    print("🚀 run() 已进入")
+    print("🚀 系统运行中")
 
     while True:
         try:
-            print("🔄 新一轮开始")
+            print("🔄 新一轮")
 
             for rss in RSS_LIST:
-                print("🌐 抓取:", rss)
 
                 feed = feedparser.parse(rss)
-
-                print("📊 条数:", len(feed.entries))
 
                 if not feed.entries:
                     continue
 
-                for i, entry in enumerate(feed.entries[:2]):
+                for entry in feed.entries[:2]:
+
                     title = entry.title
                     link = entry.link
                     summary = entry.get("summary", "")
@@ -99,36 +114,17 @@ def run():
 
                     print("📰:", title)
 
-                    # ===== 核心逻辑（快 + 稳）=====
-                    if i == 0:
-                        # 第一条用AI（高质量）
-                        ai_title, ai_content = generate_briefing(title, summary)
-                    else:
-                        # 第二条直接发（保证速度）
-                        ai_title = title
-                        ai_content = summary[:150]
+                    text = generate_briefing(title, summary)
 
-                    date = datetime.now().strftime("%Y-%m-%d")
+                    source = "NYT" if "nytimes" in rss else "BBC"
 
-                    message = f"""🧠 {ai_title}
-
-{ai_content}
-
-——
-来源：BBC / NYT
-时间：{date}
-"""
-
-                    send(message)
+                    send(text, source)
 
                     sent_links.add(link)
 
-                    print("✅ 已发送")
+                    time.sleep(3)
 
-                    time.sleep(2)   # ⚡ 加快
-
-            print("⏱️ 等待30秒...")
-            time.sleep(30)   # ⚡ 加快
+            time.sleep(30)
 
         except Exception as e:
             print("❌ 主循环错误:", e)
@@ -136,5 +132,5 @@ def run():
 
 # ===== 启动 =====
 if __name__ == "__main__":
-    print("🔥 主入口启动")
+    send("🚨 智库系统已启动", "SYSTEM")
     run()
