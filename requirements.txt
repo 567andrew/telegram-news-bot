@@ -1,4 +1,4 @@
 requests
 feedparser
-openai>=1.0.0
+openai==1.12.0
 pytrends
