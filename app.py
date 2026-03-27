@@ -1,3 +1,4 @@
+print("🔥🔥🔥 我一定被执行了 🔥🔥🔥")
 import requests
 import feedparser
 import time
