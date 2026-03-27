@@ -6,7 +6,6 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from openai import OpenAI
-from pytrends.request import TrendReq
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
@@ -14,80 +13,99 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# 🌍 新闻源
+# 🌍 精选高质量源（减少噪音）
 RSS_LIST = [
-    "http://feeds.bbci.co.uk/news/rss.xml",
-    "http://rss.cnn.com/rss/edition.rss",
-    "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml",
-    "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
-    "https://www.theguardian.com/world/rss",
-    "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
-    "https://time.com/feed/",
-    "https://www.aljazeera.com/xml/rss/all.xml",
-    "https://apnews.com/rss",
+    "http://feeds.reuters.com/reuters/topNews",
+    "http://feeds.bbci.co.uk/news/world/rss.xml",
+    "https://www.economist.com/latest/rss.xml",
     "https://www.ft.com/rss/home",
-    "https://www.cnbc.com/id/100727362/device/rss/rss.html",
-    "https://www.forbes.com/real-time/feed2/",
-    "https://www.newsweek.com/rss",
-    "https://www.economist.com/latest/rss.xml"
+    "https://www.brookings.edu/feed/"
 ]
 
-# ✅ 全局缓存（当天有效）
+# ✅ 去重缓存
 sent_links = set()
-sent_titles = []
-sent_summaries = []
+sent_briefings = []
 last_reset_day = ""
-last_hot_day = ""
 
-# 🧹 每天清空
+# 🧹 每日清空
 def check_reset():
-    global sent_links, sent_titles, sent_summaries, last_reset_day
+    global sent_links, sent_briefings, last_reset_day
 
     now = datetime.now(ZoneInfo("America/Los_Angeles"))
     today = now.strftime("%Y-%m-%d")
 
     if last_reset_day != today:
         sent_links.clear()
-        sent_titles.clear()
-        sent_summaries.clear()
+        sent_briefings.clear()
         last_reset_day = today
         print("🧹 已清空昨日数据")
 
-# 🕗 热点时间
-def check_hot_time():
-    global last_hot_day
+# 📥 抓取
+def fetch_news():
+    articles = []
+    for rss in RSS_LIST:
+        feed = feedparser.parse(rss)
+        for entry in feed.entries[:5]:
+            articles.append({
+                "title": entry.title,
+                "summary": entry.get("summary", ""),
+                "link": entry.link
+            })
+    return articles
 
-    now = datetime.now(ZoneInfo("America/Los_Angeles"))
-    if now.strftime("%H") == "20" and last_hot_day != now.strftime("%Y-%m-%d"):
-        last_hot_day = now.strftime("%Y-%m-%d")
-        return True
+# 🔁 去重（链接）
+def is_duplicate_link(link):
+    return link in sent_links
+
+# 🔁 去重（内容）
+def is_duplicate_briefing(text):
+    for b in sent_briefings[-20:]:
+        if text[:60] in b:
+            return True
     return False
 
-# 🔥 趋势
-def get_trending_topics():
-    try:
-        pytrends = TrendReq(hl='en-US', tz=360)
-        df = pytrends.trending_searches(pn='worldwide')
-        return df[0].tolist()[:15]
-    except:
-        return []
+# 🤖 单条深度简报（核心）
+def generate_briefing(article):
+    content = article["title"] + "\n" + article["summary"]
 
-# 🔥 热点榜
-def build_hot_list(trends, news_titles):
-    try:
-        text = "趋势:\n" + "\n".join(trends)
-        text += "\n\n新闻:\n" + "\n".join(news_titles[:30])
+    prompt = f"""
+你是全球顶级智库媒体编辑，请将以下内容整理为一篇中文“深度简报”。
 
-        response = client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": "整理全球Top10热点，每条一句中文（20-40字）"},
-                {"role": "user", "content": text[:2000]}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except:
-        return None
+要求：
+- 不是新闻
+- 有逻辑、有深度、有结构
+- 中文输出，专业但易懂
+
+内容：
+{content}
+
+输出结构：
+
+【核心事件】
+一句话总结
+
+【关键事实】
+3条（简洁）
+
+【深层逻辑】
+为什么发生（重点）
+
+【趋势判断】
+未来可能如何发展
+
+【影响分析】
+对普通人 / 行业意味着什么
+
+【一句话结论】
+有高度的一句话
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-5-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content.strip()
 
 # 🖼️ 图片
 def extract_image(entry):
@@ -104,79 +122,21 @@ def extract_image(entry):
 def search_image(query):
     return f"https://source.unsplash.com/800x600/?{query}"
 
-# 🧠 AI新闻
-def ai_summary(text):
-    try:
-        response = client.chat.completions.create(
-            model="gpt-5-mini",
-            messages=[
-                {"role": "system", "content": "写新闻快讯（地点+人物+事件+结果），中文一句话"},
-                {"role": "user", "content": text[:1200]}
-            ]
-        )
-        return response.choices[0].message.content.strip()[:80]
-    except:
-        return None
-
-# 🔁 标题去重
-def is_similar_title(title):
-    for t in sent_titles[-30:]:
-        if title[:20] in t or t[:20] in title:
-            return True
-    return False
-
-# 🔥 内容去重（核心）
-def is_duplicate_summary(summary):
-    for s in sent_summaries[-30:]:
-        if summary[:25] in s or s[:25] in summary:
-            return True
-    return False
-
 # 📤 发送
 def send_photo(text, image_url):
     requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-        data={"chat_id": CHAT_ID, "photo": image_url, "caption": text}
+        data={"chat_id": CHAT_ID, "photo": image_url, "caption": text[:1000]}
     )
-
-def send_message(text):
-    requests.post(
-        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        data={"chat_id": CHAT_ID, "text": text}
-    )
-
-# 🏷️ 来源
-def get_source(url):
-    if "bbc" in url: return "BBC"
-    if "cnn" in url: return "CNN"
-    if "nytimes" in url: return "NYT"
-    if "reuters" in url: return "REUTERS"
-    if "guardian" in url: return "GUARDIAN"
-    if "time" in url: return "TIME"
-    if "apnews" in url: return "AP"
-    if "aljazeera" in url: return "AJ"
-    if "ft.com" in url: return "FT"
-    if "cnbc" in url: return "CNBC"
-    if "forbes" in url: return "FORBES"
-    if "newsweek" in url: return "NEWSWEEK"
-    if "economist" in url: return "ECONOMIST"
-    return "NEWS"
 
 # 🚀 主程序
 def run():
-    print("🚀 系统启动")
+    print("🚀 单条简报系统启动")
 
     while True:
         check_reset()
 
         try:
-            # 🔥 热点榜
-            if check_hot_time():
-                trends = get_trending_topics()
-                hot = build_hot_list(trends, sent_titles)
-                if hot:
-                    send_message(f"🌍 今日全球热点 Top10\n\n{hot}")
-
             for rss in RSS_LIST:
                 feed = feedparser.parse(rss)
 
@@ -184,46 +144,49 @@ def run():
                     link = entry.link
                     title = entry.title
 
-                    if link in sent_links:
-                        continue
-                    if is_similar_title(title):
-                        continue
-
-                    content = title + " " + entry.get("summary", "")
-                    summary = ai_summary(content)
-
-                    if not summary or len(summary) < 20:
+                    # 🔁 去重
+                    if is_duplicate_link(link):
                         continue
 
-                    # 🔥 内容去重
-                    if is_duplicate_summary(summary):
-                        print("⚠️ 重复内容跳过")
+                    print("📰 处理:", title)
+
+                    article = {
+                        "title": title,
+                        "summary": entry.get("summary", "")
+                    }
+
+                    briefing = generate_briefing(article)
+
+                    if not briefing or len(briefing) < 80:
+                        continue
+
+                    # 🔁 简报去重
+                    if is_duplicate_briefing(briefing):
+                        print("⚠️ 重复简报跳过")
                         continue
 
                     image = extract_image(entry)
                     if not image:
                         image = search_image(title)
 
-                    source = get_source(link)
                     date = datetime.now(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d")
 
-                    message = f"{summary}\n\n{source} {date}"
+                    message = f"🧠 全球简报 | {date}\n\n{briefing}"
 
                     send_photo(message, image)
 
                     # ✅ 记录
                     sent_links.add(link)
-                    sent_titles.append(title)
-                    sent_summaries.append(summary)
+                    sent_briefings.append(briefing)
 
-                    print("✅ 已发送:", summary)
+                    print("✅ 已发送")
 
-                    time.sleep(5)
+                    time.sleep(10)
 
         except Exception as e:
             print("❌ 错误:", e)
 
-        time.sleep(600)
+        time.sleep(600)  # 每10分钟扫描
 
 if __name__ == "__main__":
     run()
