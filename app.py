@@ -1,14 +1,14 @@
 import time
 import requests
 import feedparser
-import hashlib
 import json
 import os
+import sys
 from datetime import datetime
 from openai import OpenAI
-import sys
 
-# ========= 强制UTF-8 =========
+# ========= ✅ 强制UTF-8（关键修复）=========
+os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding='utf-8')
 
 # ========= 配置 =========
@@ -63,15 +63,21 @@ def send_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
     try:
-        res = requests.post(url, json={
-            "chat_id": CHAT_ID,
-            "text": text,
-            "parse_mode": "Markdown"
-        }, timeout=10)
+        res = requests.post(
+            url,
+            json={
+                "chat_id": CHAT_ID,
+                "text": text,
+                "parse_mode": "Markdown"
+            },
+            timeout=10
+        )
 
-        print("📤 Telegram状态:", res.status_code)
+        # ✅ 打印真实返回（关键）
+        print("📤 Telegram返回:", res.text)
+
     except Exception as e:
-        print("❌ Telegram失败:", e)
+        print("❌ Telegram错误:", e)
 
 # ========= AI分析 =========
 def analyze_news(title, summary):
@@ -85,12 +91,12 @@ def analyze_news(title, summary):
 
 输出：
 1. 中文翻译
-2. 核心事件（一句话）
+2. 核心事件
 3. 深度分析
 4. 战略影响
 5. 趋势判断
 
-风格：简洁、专业、情报报告
+风格：简洁、专业
 """
 
     try:
@@ -103,6 +109,9 @@ def analyze_news(title, summary):
         )
 
         content = res.choices[0].message.content
+
+        # ✅ 关键修复：防止中文编码崩溃
+        content = content.encode("utf-8", "ignore").decode("utf-8")
 
         print("⏱ AI耗时:", round(time.time() - start, 2), "秒")
 
@@ -128,7 +137,7 @@ def fetch_news():
                 })
 
         except Exception as e:
-            print("RSS错误:", e)
+            print("❌ RSS错误:", e)
 
     return results
 
@@ -150,7 +159,7 @@ def job():
         analysis = analyze_news(title, news["summary"])
 
         if not analysis:
-            print("❌ AI失败，跳过")
+            print("⚠️ AI失败，跳过")
             continue
 
         message = f"""🧠 *智库报告*
@@ -170,7 +179,7 @@ def job():
 
 # ========= 主循环 =========
 if __name__ == "__main__":
-    print("🚀 智库系统启动")
+    print("🚀 系统启动")
 
     while True:
         try:
