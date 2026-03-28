@@ -1,3 +1,4 @@
+print("🚀 程序真的启动了吗？")
 import time
 import feedparser
 import requests
