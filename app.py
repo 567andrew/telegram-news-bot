@@ -1,166 +1,127 @@
-import requests
-import feedparser
 import time
-import os
-from datetime import datetime
-from openai import OpenAI
+import feedparser
+import requests
 
-print("🔥 Andrew智库系统启动")
+# ========================
+# 🔑 配置区（必须修改）
+# ========================
+BOT_TOKEN = "你的BOT_TOKEN"
+CHAT_ID = "你的CHAT_ID"
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-
-# ===== 初始化 =====
-client = None
-if OPENAI_API_KEY:
-    try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        print("✅ OpenAI 已连接")
-    except Exception as e:
-        print("❌ OpenAI 初始化失败:", e)
-
-# ===== RSS源 =====
-RSS_LIST = [
+RSS_FEEDS = [
     "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
     "https://feeds.bbci.co.uk/news/world/rss.xml"
 ]
 
-sent_links = set()
+CHECK_INTERVAL = 60  # 每60秒检测一次
 
-# ===== AI智库生成 =====
-def generate_briefing(title, summary):
-
-    # ===== 第一层：AI生成 =====
-    if client:
-        try:
-            print("🤖 AI处理中...")
-
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{
-                    "role": "user",
-                    "content": f"""
-你是全球顶级智库分析师，请整理以下新闻：
-
-要求：
-1. 中文标题（有判断）
-2. 核心内容（2-3句话，简洁清晰）
-3. 不要逐句翻译
-
-新闻：
-标题：{title}
-内容：{summary}
-"""
-                }],
-                timeout=15
-            )
-
-            result = response.choices[0].message.content.strip()
-
-            print("📊 AI返回:", result)
-
-            if result:
-                print("✅ AI成功")
-                return result
-
-        except Exception as e:
-            print("❌ AI失败:", e)
-
-    # ===== 第二层：降级方案（一定是中文）=====
-    print("⚠️ 使用降级方案")
-
-    return f"""
-【简报】{title}
-
-该事件反映出当前国际局势中的重要变化，可能对相关地区的政治或经济产生持续影响。建议持续关注后续发展。
-"""
-
-# ===== Telegram发送 =====
-def send(text, source):
+# ========================
+# 📁 去重存储
+# ========================
+def load_sent_news():
     try:
-        print("📤 发送中...")
+        with open("sent_news.txt", "r", encoding="utf-8") as f:
+            return set(f.read().splitlines())
+    except:
+        return set()
 
-        final_text = f"""
-🧠 世界智库简报
+def save_sent_news(sent_set):
+    with open("sent_news.txt", "w", encoding="utf-8") as f:
+        for item in sent_set:
+            f.write(item + "\n")
 
-{text}
+# ========================
+# 🌐 简单翻译（免费版）
+# ========================
+def translate(text):
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": "zh-CN",
+            "dt": "t",
+            "q": text
+        }
+        res = requests.get(url, params=params, timeout=10)
+        return res.json()[0][0][0]
+    except:
+        return text
 
-—— 来源：{source}
-—— 时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}
-"""
-
-        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-        r = requests.post(
-            url,
-            data={
-                "chat_id": CHAT_ID,
-                "text": final_text[:4000]
-            },
-            timeout=10
-        )
-
-        print("📡 Telegram返回:", r.text)
-
+# ========================
+# 📤 发送Telegram
+# ========================
+def send_telegram(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    try:
+        requests.post(url, data=data, timeout=10)
     except Exception as e:
-        print("❌ 发送失败:", e)
+        print("发送失败:", e)
 
-# ===== 主循环 =====
+# ========================
+# 🧠 主逻辑
+# ========================
 def run():
-    print("🚀 系统运行中")
+    print("🔥 程序启动成功")
+    sent_news = load_sent_news()
 
     while True:
-        try:
-            print("🔄 新一轮开始")
+        print("\n🔄 新一轮开始")
 
-            for rss in RSS_LIST:
-                print("🌐 抓取:", rss)
+        new_count = 0
 
-                feed = feedparser.parse(rss)
+        for feed_url in RSS_FEEDS:
+            print(f"📡 抓取: {feed_url}")
 
-                print("📊 条数:", len(feed.entries))
+            feed = feedparser.parse(feed_url)
+            entries = feed.entries[:5]  # 只取最新5条
 
-                if not feed.entries:
-                    print("⚠️ RSS为空")
+            for item in entries:
+                link = item.link.strip()
+
+                # ✅ 去重判断（核心）
+                if link in sent_news:
                     continue
 
-                for entry in feed.entries[:2]:
+                title = item.title
+                summary = item.summary if "summary" in item else ""
 
-                    title = entry.title
-                    link = entry.link
-                    summary = entry.get("summary", "")
+                # 翻译
+                zh_title = translate(title)
+                zh_summary = translate(summary[:100])
 
-                    if link in sent_links:
-                        continue
+                message = f"""
+🧠 <b>世界智库简报</b>
 
-                    print("📰 新闻:", title)
+📰 <b>{zh_title}</b>
 
-                    text = generate_briefing(title, summary)
+{zh_summary}
 
-                    source = "NYT" if "nytimes" in rss else "BBC"
+🔗 <a href="{link}">查看原文</a>
+"""
 
-                    send(text, source)
+                send_telegram(message)
 
-                    sent_links.add(link)
+                # 记录已发送
+                sent_news.add(link)
+                new_count += 1
 
-                    time.sleep(3)
+                print(f"✅ 已发送: {title}")
 
-            print("⏱️ 等待30秒...")
-            time.sleep(30)
+        save_sent_news(sent_news)
 
-        except Exception as e:
-            print("❌ 主循环错误:", e)
-            time.sleep(10)
+        print(f"📊 本轮新新闻: {new_count}")
+        print(f"⏳ 等待 {CHECK_INTERVAL} 秒...\n")
 
-# ===== 启动 =====
+        time.sleep(CHECK_INTERVAL)
+
+# ========================
+# 🚀 启动
+# ========================
 if __name__ == "__main__":
-    print("🔥 主入口启动")
-
-    # 👉 启动提示（确认系统活着）
-    try:
-        send("🚨 智库系统已启动", "SYSTEM")
-    except:
-        pass
-
     run()
