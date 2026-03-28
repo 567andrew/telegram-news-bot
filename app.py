@@ -2,6 +2,7 @@ import requests
 import feedparser
 import json
 import os
+import time
 from datetime import datetime
 from openai import OpenAI
 
@@ -12,7 +13,6 @@ OPENAI_API_KEY = "你的key"
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# ========= 智库RSS =========
 RSS_LIST = [
     "https://www.rand.org/rss.xml",
     "https://www.cfr.org/rss.xml",
@@ -22,21 +22,23 @@ RSS_LIST = [
     "https://warontherocks.com/feed/"
 ]
 
-# ========= 缓存 =========
 HISTORY_FILE = "sent_news.json"
 DATE_FILE = "last_date.txt"
-MAX_HISTORY = 100
 
-# ========= 日期检查 =========
+# ========= 日志 =========
+def log(msg):
+    print(f"[{datetime.now()}] {msg}")
+
+# ========= 每日清理 =========
 def check_new_day():
     today = datetime.now().strftime("%Y-%m-%d")
 
     if os.path.exists(DATE_FILE):
         with open(DATE_FILE, "r") as f:
-            last_date = f.read().strip()
+            last = f.read().strip()
 
-        if last_date != today:
-            print("🧹 新的一天，清空缓存")
+        if last != today:
+            log("🧹 新的一天，清空缓存")
             if os.path.exists(HISTORY_FILE):
                 os.remove(HISTORY_FILE)
 
@@ -51,14 +53,13 @@ def load_sent():
     return set()
 
 def save_sent(data):
-    data = list(data)[-MAX_HISTORY:]
     with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f)
+        json.dump(list(data)[-100:], f)
 
 # ========= 发送 =========
 def send_telegram(text):
     try:
-        requests.post(
+        res = requests.post(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
             data={
                 "chat_id": CHAT_ID,
@@ -66,50 +67,62 @@ def send_telegram(text):
                 "parse_mode": "Markdown"
             }
         )
-        print("✅ 发送成功")
+        log(f"📤 Telegram状态: {res.status_code}")
+        log(f"📤 返回: {res.text}")
     except Exception as e:
-        print("❌ 发送失败:", e)
+        log(f"❌ Telegram错误: {e}")
 
 # ========= AI分析 =========
-def analyze_thinktank(title, summary, source):
-    print("🧠 AI分析中...")
+def analyze(title, summary):
+    log("🧠 AI分析中...")
 
     prompt = f"""
-你是全球顶级智库分析师（兰德级别）。
+你是顶级智库分析师。
 
-来源: {source}
 标题: {title}
 内容: {summary}
 
 输出：
+1. 中文翻译
+2. 核心观点（1句话）
+3. 战略意义
+4. 影响分析
+5. 趋势判断
 
-【1】中文翻译（准确）
-【2】核心观点（1句话）
-【3】关键信息（3点）
-【4】战略本质（本质逻辑）
-【5】国家利益分析（谁受益/受损）
-【6】风险与机会
-【7】趋势判断
-
-要求：
-- 像情报报告
-- 简洁有力
-- 不废话
+并给出评分：
+重要性: X/10
 """
 
     try:
+        start = time.time()
+
         res = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4
         )
-        return res.choices[0].message.content
+
+        cost = round(time.time() - start, 2)
+        log(f"⏱ AI耗时: {cost}s")
+
+        content = res.choices[0].message.content
+
+        # 提取评分
+        import re
+        score = 0
+        match = re.search(r"(\d+)/10", content)
+        if match:
+            score = int(match.group(1))
+
+        return content, score
+
     except Exception as e:
-        return f"❌ AI分析失败: {e}"
+        log(f"💥 AI错误: {e}")
+        return None, 0
 
 # ========= 抓取 =========
 def fetch_news():
-    print("🌍 抓取智库内容...")
+    log("🌍 抓取智库内容...")
 
     results = []
 
@@ -120,58 +133,62 @@ def fetch_news():
             results.append({
                 "title": entry.title,
                 "summary": entry.summary if "summary" in entry else "",
-                "link": entry.link,
-                "source": rss
+                "link": entry.link
             })
 
-    print(f"📊 获取 {len(results)} 条")
+    log(f"📊 获取 {len(results)} 条")
     return results
 
 # ========= 主逻辑 =========
 def run_once():
+    log("🚀 系统启动")
+
     check_new_day()
 
-    sent_titles = load_sent()
+    sent = load_sent()
     news_list = fetch_news()
 
     for news in news_list:
         title = news["title"]
 
-        if title in sent_titles:
+        if title in sent:
             continue
 
-        print("🆕 新内容:", title)
+        log(f"🆕 新内容: {title}")
 
-        analysis = analyze_thinktank(
-            title,
-            news["summary"],
-            news["source"]
-        )
+        analysis, score = analyze(title, news["summary"])
+
+        if not analysis:
+            log("❌ AI失败，跳过")
+            return
+
+        log(f"📊 评分: {score}")
+
+        if score < 5:
+            log("⏭ 分数太低，跳过")
+            continue
 
         message = f"""
-🧠 *全球智库情报*
+🧠 *智库情报*
 
 {analysis}
 
-🔗 原文:
-{news["link"]}
+🔗 {news["link"]}
 """
 
         send_telegram(message)
 
-        sent_titles.add(title)
-        save_sent(sent_titles)
+        sent.add(title)
+        save_sent(sent)
 
-        print("✅ 完成本轮任务")
+        log("✅ 完成本轮")
         return
 
-    print("⚠️ 今日暂无新内容")
+    log("📭 没有可发送内容")
 
 # ========= 入口 =========
 if __name__ == "__main__":
-    print("🚀 智库系统启动:", datetime.now())
-
     try:
         run_once()
     except Exception as e:
-        print("💥 错误:", e)
+        log(f"💥 系统错误: {e}")
