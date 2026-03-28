@@ -1,6 +1,8 @@
 import time
 import requests
 import feedparser
+import json
+import os
 from openai import OpenAI
 
 # ========= 配置 =========
@@ -15,58 +17,72 @@ RSS_LIST = [
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-sent_titles = set()
+# ========= 去重文件 =========
+HISTORY_FILE = "sent_news.json"
+
+def load_sent():
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    return set()
+
+def save_sent(sent):
+    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(list(sent), f)
+
+sent_titles = load_sent()
 
 # ========= 发送消息 =========
 def send_telegram(text, image=None):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    print("📤 发送中...")
 
-    if image:
-        try:
-            requests.post(
+    try:
+        if image:
+            res = requests.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto",
                 data={
                     "chat_id": CHAT_ID,
                     "caption": text,
                     "parse_mode": "Markdown"
                 },
-                files=None,
-                json=None,
-                params={"photo": image}
+                files={"photo": requests.get(image).content}
             )
-            return
-        except:
-            pass
+        else:
+            res = requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                data={
+                    "chat_id": CHAT_ID,
+                    "text": text,
+                    "parse_mode": "Markdown"
+                }
+            )
 
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "Markdown"
-    })
+        print("✅ 发送成功", res.status_code)
+
+    except Exception as e:
+        print("❌ 发送失败:", e)
 
 
 # ========= AI分析 =========
 def analyze_news(title, summary):
-    prompt = f"""
-你是一个国际智库分析师（类似兰德公司）。
+    print("🤖 AI分析中...")
 
-请对这条新闻做【战略级分析】：
+    prompt = f"""
+你是一个国际顶级智库分析师（类似兰德公司）。
+
+请分析：
 
 标题: {title}
 内容: {summary}
 
-要求输出：
+输出：
+1. 中文翻译
+2. 核心事件
+3. 深度分析
+4. 影响评估
+5. 趋势判断
 
-1. 中文翻译（准确）
-2. 核心事件（1句话）
-3. 深度分析（发生了什么，本质是什么）
-4. 影响评估（对国际局势的影响）
-5. 关键判断（未来可能如何发展）
-
-风格：
-- 专业
-- 简洁
-- 像情报报告
+要求：简洁、专业、像情报报告
 """
 
     try:
@@ -82,43 +98,46 @@ def analyze_news(title, summary):
 
 # ========= 抓新闻 =========
 def fetch_news():
+    print("🌍 抓取新闻中...")
+
     results = []
 
     for rss in RSS_LIST:
         feed = feedparser.parse(rss)
 
-        for entry in feed.entries[:3]:
-            title = entry.title
-            summary = entry.summary if "summary" in entry else ""
-            link = entry.link
-
+        for entry in feed.entries[:5]:
             image = None
+
             if "media_content" in entry:
-                image = entry.media_content[0]["url"]
+                image = entry.media_content[0].get("url")
 
             results.append({
-                "title": title,
-                "summary": summary,
-                "link": link,
+                "title": entry.title,
+                "summary": entry.summary if "summary" in entry else "",
+                "link": entry.link,
                 "image": image
             })
 
+    print(f"📰 抓到 {len(results)} 条新闻")
     return results
 
 
 # ========= 主流程 =========
 def run():
+    global sent_titles
+
     news_list = fetch_news()
 
     for news in news_list:
-        if news["title"] in sent_titles:
+        title = news["title"]
+
+        if title in sent_titles:
+            print("⏭ 已发送过，跳过:", title)
             continue
 
-        sent_titles.add(news["title"])
+        print("🆕 新新闻:", title)
 
-        print("处理:", news["title"])
-
-        analysis = analyze_news(news["title"], news["summary"])
+        analysis = analyze_news(title, news["summary"])
 
         message = f"""
 🧠 *智库分析报告*
@@ -130,19 +149,22 @@ def run():
 
         send_telegram(message, news["image"])
 
-        time.sleep(3)
+        sent_titles.add(title)
+        save_sent(sent_titles)
+
+        print("✅ 完成一条，等待下一轮")
+        return   # 👉 每轮只发1条
 
 
 # ========= 主循环 =========
 if __name__ == "__main__":
-    print("🚀 启动智库系统")
+    print("🚀 系统启动成功")
 
-    for i in range(10):
-        print(f"第{i+1}轮扫描")
-
+    while True:
         try:
             run()
         except Exception as e:
-            print("错误:", e)
+            print("❌ 主循环错误:", e)
 
+        print("⏳ 等待60秒...\n")
         time.sleep(60)
