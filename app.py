@@ -7,7 +7,7 @@ import sys
 from datetime import datetime
 from openai import OpenAI
 
-# ========= ✅ 强制UTF-8（关键修复）=========
+# ========= UTF-8 =========
 os.environ["PYTHONIOENCODING"] = "utf-8"
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -16,9 +16,27 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# ✅ 启动检查（关键！！！）
+if not TELEGRAM_TOKEN:
+    print("❌ TELEGRAM_TOKEN 未配置")
+    exit()
 
-# ========= 智库RSS =========
+if not CHAT_ID:
+    print("❌ CHAT_ID 未配置")
+    exit()
+
+if not OPENAI_API_KEY:
+    print("❌ OPENAI_API_KEY 未配置")
+    exit()
+
+# ✅ 初始化（防崩）
+try:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+except Exception as e:
+    print("❌ OpenAI初始化失败:", e)
+    exit()
+
+# ========= RSS =========
 RSS_LIST = [
     "https://www.brookings.edu/feed/",
     "https://carnegieendowment.org/rss/all.xml",
@@ -73,18 +91,15 @@ def send_telegram(text):
             timeout=10
         )
 
-        # ✅ 打印真实返回（关键）
         print("📤 Telegram返回:", res.text)
 
     except Exception as e:
         print("❌ Telegram错误:", e)
 
-# ========= AI分析 =========
+# ========= AI =========
 def analyze_news(title, summary):
     prompt = f"""
-你是全球顶级智库分析师（兰德级别）。
-
-请分析：
+你是全球顶级智库分析师。
 
 标题: {title}
 内容: {summary}
@@ -95,27 +110,16 @@ def analyze_news(title, summary):
 3. 深度分析
 4. 战略影响
 5. 趋势判断
-
-风格：简洁、专业
 """
 
     try:
-        start = time.time()
-
         res = client.chat.completions.create(
             model="gpt-4.1-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.5
         )
 
-        content = res.choices[0].message.content
-
-        # ✅ 关键修复：防止中文编码崩溃
-        content = content.encode("utf-8", "ignore").decode("utf-8")
-
-        print("⏱ AI耗时:", round(time.time() - start, 2), "秒")
-
-        return content
+        return res.choices[0].message.content
 
     except Exception as e:
         print("💥 AI错误:", e)
@@ -143,10 +147,10 @@ def fetch_news():
 
 # ========= 主任务 =========
 def job():
-    print("🌍 抓取智库内容...")
+    print("🌍 抓取中...")
 
     news_list = fetch_news()
-    print("📊 获取", len(news_list), "条")
+    print("📊", len(news_list), "条")
 
     for news in news_list:
         title = news["title"]
@@ -154,12 +158,11 @@ def job():
         if is_sent(title):
             continue
 
-        print("🆕 新内容:", title)
+        print("🆕", title)
 
         analysis = analyze_news(title, news["summary"])
 
         if not analysis:
-            print("⚠️ AI失败，跳过")
             continue
 
         message = f"""🧠 *智库报告*
@@ -170,16 +173,13 @@ def job():
 """
 
         send_telegram(message)
-
         mark_sent(title)
 
         time.sleep(5)
 
-    print("✅ 本轮完成")
-
 # ========= 主循环 =========
 if __name__ == "__main__":
-    print("🚀 系统启动")
+    print("🚀 启动成功")
 
     while True:
         try:
